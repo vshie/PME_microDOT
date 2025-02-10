@@ -3,7 +3,7 @@ version: '3.7'
 services:
   video-recorder:
     build: .
-    container_name: blueos-PME_microDOT
+    container_name: pme_microdot
     network_mode: host  # Required for BlueOS
     ports:
       - "6423:6423"  # Fixed host:container port mapping
