@@ -1,60 +1,108 @@
 #!/usr/bin/env python3
+import threading
+import time
+import datetime
+import serial
+from flask import Flask, jsonify, send_from_directory
 
-import requests
-import logging.handlers
-from pathlib import Path
-from litestar import Litestar, get, MediaType
-from litestar.controller import Controller
-from litestar.datastructures import State
-from litestar.logging import LoggingConfig
-from litestar.static_files.config import StaticFilesConfig
+app = Flask(__name__)
 
-class CountController(Controller):
-    COUNT_VAR = 'quickstart_backend_perm_count'
-    def __init__(self, *args, **kwargs):
-        self._temp_count = 0
-        super().__init__(*args, **kwargs)
+# Global list to store the latest 60 measurements.
+# Each measurement is a dict: {timestamp, temperature, do, q}
+data = []
+DATA_LOCK = threading.Lock()
 
-    @get("/temp_count", sync_to_thread=False)
-    def increment_temp_count(self) -> dict[str, int]:
-        self._temp_count += 1
-        return {"value": self._temp_count}
+# Serial port configuration
+SERIAL_PORT = "/dev/ttyUSB0"
+BAUD_RATE = 9600
 
-    @get("/persistent_count", sync_to_thread=True)
-    def increment_persistent_count(self, state: State) -> dict[str, int]:
-        # read the existing persistent count value (from the BlueOS "Bag of Holding" service API)
-        try:
-            response = requests.get(f'{state.bag_url}/get/{self.COUNT_VAR}')
-            response.raise_for_status()
-            value = response.json()['value']
-        except Exception as e:  # TODO: specifically except HTTP error 400 (using response.status_code?)
-            value = 0
-        value += 1
-        # write the incremented value back out
-        output = {'value': value}
-        requests.post(f'{state.bag_url}/set/{self.COUNT_VAR}', json=output)
-        return output
-
-logging_config = LoggingConfig(
-    loggers={
-        __name__: dict(
-            level='INFO',
-            handlers=['queue_listener'],
+def read_sensor_loop():
+    """Continuously poll the sensor every 5 seconds and update the global data."""
+    global data
+    try:
+        ser = serial.Serial(
+            port=SERIAL_PORT,
+            baudrate=BAUD_RATE,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=1  # read timeout in seconds
         )
-    },
-)
+    except serial.SerialException as e:
+        print(f"Error opening serial port: {e}")
+        return
 
-log_dir = Path('/app/logs')
-log_dir.mkdir(parents=True, exist_ok=True)
-fh = logging.handlers.RotatingFileHandler(log_dir / 'lumber.log', maxBytes=2**16, backupCount=1)
+    print("Serial port opened successfully.")
+    
+    while True:
+        # Send the command with carriage return and newline.
+        command = "MDOT\r\n"
+        try:
+            ser.write(command.encode('utf-8'))
+            print(f"Sent command: {command.strip()}")
+        except Exception as e:
+            print("Error writing to serial port:", e)
+            time.sleep(5)
+            continue
+        
+        # Allow sensor time to reply.
+        time.sleep(0.5)
+        try:
+            raw_response = ser.read_all().decode('utf-8')
+        except Exception as e:
+            print("Error reading from serial port:", e)
+            raw_response = ""
+        
+        print("Raw response:", raw_response)
+        
+            
+        # Expected response example: "0,+0.00,+20.276,+8.997,+0.931"
+        parts = [p.strip() for p in raw_response.split(',')]
+        if len(parts) < 5:
+            print("Invalid response received, skipping.")
+        else:
+            try:
+                # parts[0]: time (ignored), parts[1]: Battery V (ignored)
+                temperature = float(parts[2])
+                do = float(parts[3])
+                q = float(parts[4])
+                measurement = {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "temperature": temperature,
+                    "do": do,
+                    "q": q
+                }
+                with DATA_LOCK:
+                    data.append(measurement)
+                    if len(data) > 60:
+                        data = data[-60:]
+                print("Stored measurement:", measurement)
+            except Exception as e:
+                print("Error parsing measurement:", e)
+        
+        # Wait for the remainder of the 5-second cycle.
+        time.sleep(5)
 
-app = Litestar(
-    route_handlers=[CountController],
-    state=State({'bag_url':'http://host.docker.internal/bag/v1.0'}),
-    static_files_config=[
-        StaticFilesConfig(directories=['app/static'], path='/', html_mode=True)
-    ],
-    logging_config=logging_config,
-)
+# Start the sensor polling thread (daemonized so it stops with the main app)
+sensor_thread = threading.Thread(target=read_sensor_loop, daemon=True)
+sensor_thread.start()
 
-app.logger.addHandler(fh)
+@app.route('/api/data')
+def get_data():
+    """Return the latest 60 measurements as JSON."""
+    with DATA_LOCK:
+        return jsonify(data)
+
+@app.route('/api/serial')
+def get_serial():
+    """Return the serial port configuration."""
+    return jsonify({"serial_port": SERIAL_PORT, "baud_rate": BAUD_RATE})
+
+# Serve the Vue2 frontend (assumes index.html is in the "static" directory)
+@app.route('/')
+def index():
+    return send_from_directory('static', 'index.html')
+
+if __name__ == '__main__':
+    # Run Flask on port 6423
+    app.run(host='0.0.0.0', port=6423)

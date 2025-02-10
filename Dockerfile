@@ -1,29 +1,45 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bullseye
 
-COPY app /app
-RUN python -m pip install /app --extra-index-url https://www.piwheels.org/simple
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    psmisc \
+    && rm -rf /var/lib/apt/lists/*
 
-EXPOSE 8000/tcp
+# Create app directory
+WORKDIR /app
 
-LABEL version="0.0.3"
+# Copy app files (Flask backend and static Vue2 files)
+COPY app/ .
+
+# Install Python dependencies (Flask and pySerial)
+RUN pip install flask pyserial
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=app.py
+
+# Expose port 6423 for Flask
+EXPOSE 6423
+
+LABEL version="0.1"
 
 ARG IMAGE_NAME
-
 LABEL permissions='\
 {\
   "ExposedPorts": {\
-    "8000/tcp": {}\
+    "6423/tcp": {}\
   },\
   "HostConfig": {\
-    "Binds":["/usr/blueos/extensions/$IMAGE_NAME:/app"],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
     "PortBindings": {\
-      "8000/tcp": [\
+      "6423/tcp": [\
         {\
           "HostPort": ""\
         }\
       ]\
-    }\
+    },\
+    "NetworkMode": "host",\
+    "Privileged": true\
   }\
 }'
 
@@ -31,25 +47,31 @@ ARG AUTHOR
 ARG AUTHOR_EMAIL
 LABEL authors='[\
     {\
-        "name": "$AUTHOR",\
-        "email": "$AUTHOR_EMAIL"\
+        "name": "Tony White",\
+        "email": "tony@bluerobotics.com"\
     }\
 ]'
 
 ARG MAINTAINER
 ARG MAINTAINER_EMAIL
-LABEL company='{\
+LABEL company='\
+{\
         "about": "",\
-        "name": "$MAINTAINER",\
-        "email": "$MAINTAINER_EMAIL"\
+        "name": "Tony Whitey",\
+        "email": "support@bluerobotics.com"\
     }'
-LABEL type="example"
+LABEL type="tool"
+
 ARG REPO
 ARG OWNER
-LABEL readme='https://raw.githubusercontent.com/$OWNER/$REPO/{tag}/README.md'
-LABEL links='{\
-        "source": "https://github.com/$OWNER/$REPO"\
+LABEL readme=''
+LABEL links='\
+{\
+        "source": ""\
     }'
-LABEL requirements="core >= 1.1"
+LABEL requirements="core >= 1.0"
 
-ENTRYPOINT litestar run --host 0.0.0.0
+# Optionally, mark /dev/ttyUSB0 as a volume to allow access to the serial device.
+VOLUME ["/dev/ttyUSB0"]
+
+ENTRYPOINT ["python", "-u", "/app/app.py"]
