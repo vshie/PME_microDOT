@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+    #app { width: 100%; height: 100%; }
+    canvas { width: 100% !important; height: 100% !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="widgetChart"></canvas>
+  </div>
+  
+  <script>
+    new Vue({
+      el: '#app',
+      data: {
+        chart: null,
+        refreshTimer: null
+      },
+      methods: {
+        fetchData() {
+          axios.get('/api/data?duration=5').then(response => {
+            this.updateChart(response.data);
+          }).catch(error => {
+            console.error("Error fetching sensor data:", error);
+          });
+        },
+        updateChart(measurements) {
+          const labels = measurements.map(m => new Date(m.timestamp).toLocaleTimeString());
+          const temperatureData = measurements.map(m => m.temperature);
+          const doData = measurements.map(m => m.do);
+          
+          if (!this.chart) {
+            const ctx = document.getElementById('widgetChart').getContext('2d');
+            this.chart = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: labels,
+                datasets: [
+                  {
+                    label: 'DO mg/l',
+                    data: doData,
+                    borderColor: 'blue',
+                    fill: false,
+                    yAxisID: 'y-do'
+                  },
+                  {
+                    label: 'Temp °C',
+                    data: temperatureData,
+                    borderColor: 'red',
+                    fill: false,
+                    yAxisID: 'y-temp'
+                  }
+                ]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 },
+                legend: {
+                  position: 'bottom',
+                  labels: {
+                    boxWidth: 12,
+                    padding: 4
+                  }
+                },
+                scales: {
+                  xAxes: [{
+                    display: true,
+                    ticks: {
+                      maxTicksLimit: 5,
+                      maxRotation: 0
+                    }
+                  }],
+                  yAxes: [
+                    {
+                      id: 'y-do',
+                      position: 'left',
+                      ticks: {
+                        maxTicksLimit: 5
+                      },
+                      gridLines: {
+                        drawOnChartArea: true
+                      }
+                    },
+                    {
+                      id: 'y-temp',
+                      position: 'right',
+                      ticks: {
+                        maxTicksLimit: 5
+                      },
+                      gridLines: {
+                        drawOnChartArea: false
+                      }
+                    }
+                  ]
+                }
+              }
+            });
+          } else {
+            this.chart.data.labels = labels;
+            this.chart.data.datasets[0].data = doData;
+            this.chart.data.datasets[1].data = temperatureData;
+            this.chart.update('none');
+          }
+        }
+      },
+      mounted() {
+        this.fetchData();
+        this.refreshTimer = setInterval(this.fetchData, 5000);
+      },
+      beforeDestroy() {
+        if (this.refreshTimer) {
+          clearInterval(this.refreshTimer);
+        }
+      }
+    });
+  </script>
+</body>
+</html> 

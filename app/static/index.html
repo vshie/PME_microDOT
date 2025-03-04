@@ -12,6 +12,34 @@
     .control-container { margin-bottom: 20px; display: flex; gap: 20px; align-items: center; }
     .control-group { flex: 1; }
     select { padding: 5px; font-size: 14px; width: 150px; }
+    .download-btn {
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .download-btn:hover {
+      background-color: #45a049;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+    }
+    .delete-btn {
+      padding: 8px 16px;
+      background-color: #f44336;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .delete-btn:hover {
+      background-color: #da190b;
+    }
   </style>
 </head>
 <body>
@@ -34,6 +62,14 @@
           <option value="5">Last 5 Minutes</option>
           <option value="1">Last Minute</option>
         </select>
+      </div>
+      <div class="control-group">
+        <label>&nbsp;</label>
+        <br>
+        <div class="button-group">
+          <button @click="downloadLogs" class="download-btn">Download Logs</button>
+          <button @click="confirmDeleteLogs" class="delete-btn">Delete Logs</button>
+        </div>
       </div>
     </div>
     <canvas id="myChart" width="800" height="400"></canvas>
@@ -75,7 +111,6 @@
           const labels = this.measurements.map(m => new Date(m.timestamp).toLocaleTimeString());
           const temperatureData = this.measurements.map(m => m.temperature);
           const doData = this.measurements.map(m => m.do);
-          const qData = this.measurements.map(m => m.q);
           
           if (!this.chart) {
             const ctx = document.getElementById('myChart').getContext('2d');
@@ -85,13 +120,6 @@
                 labels: labels,
                 datasets: [
                   {
-                    label: 'Temperature (°C)',
-                    data: temperatureData,
-                    borderColor: 'red',
-                    fill: false,
-                    yAxisID: 'y-temp'
-                  },
-                  {
                     label: 'Oxygen Concentration (mg/l)',
                     data: doData,
                     borderColor: 'blue',
@@ -99,11 +127,11 @@
                     yAxisID: 'y-do'
                   },
                   {
-                    label: 'Q (non-dimensional)',
-                    data: qData,
-                    borderColor: 'green',
+                    label: 'Temperature (°C)',
+                    data: temperatureData,
+                    borderColor: 'red',
                     fill: false,
-                    yAxisID: 'y-q'
+                    yAxisID: 'y-temp'
                   }
                 ]
               },
@@ -134,15 +162,6 @@
                         display: true,
                         labelString: 'Oxygen (mg/l)'
                       }
-                    },
-                    {
-                      id: 'y-q',
-                      position: 'right',
-                      gridLines: { drawOnChartArea: false },
-                      scaleLabel: {
-                        display: true,
-                        labelString: 'Q'
-                      }
                     }
                   ]
                 }
@@ -150,9 +169,8 @@
             });
           } else {
             this.chart.data.labels = labels;
-            this.chart.data.datasets[0].data = temperatureData;
-            this.chart.data.datasets[1].data = doData;
-            this.chart.data.datasets[2].data = qData;
+            this.chart.data.datasets[0].data = doData;
+            this.chart.data.datasets[1].data = temperatureData;
             this.chart.update('none');
           }
         },
@@ -166,6 +184,28 @@
           this.refreshTimer = setInterval(() => {
             this.fetchData();
           }, this.refreshInterval * 1000);
+        },
+        downloadLogs() {
+          window.location.href = '/api/logs';
+        },
+        confirmDeleteLogs() {
+          if (confirm('Are you sure you want to delete all logs? This cannot be undone.')) {
+            this.deleteLogs();
+          }
+        },
+        deleteLogs() {
+          axios.post('/api/logs/delete')
+            .then(response => {
+              if (response.data.success) {
+                alert('Logs deleted successfully');
+              } else {
+                alert('Error deleting logs: ' + response.data.message);
+              }
+            })
+            .catch(error => {
+              console.error('Error deleting logs:', error);
+              alert('Error deleting logs. Check console for details.');
+            });
         }
       },
       mounted() {

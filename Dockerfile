@@ -26,10 +26,11 @@ ARG IMAGE_NAME
 LABEL permissions='\
 {\
   "ExposedPorts": {\
-    "6423/tcp": {}\
+    "6436/tcp": {}\
   },\
   "HostConfig": {\
     "Binds": [\
+      "/usr/blueos/extensions/do-sensor/logs:/app/logs",\
       "/dev/ttyUSB0:/dev/ttyUSB0"\
     ],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
