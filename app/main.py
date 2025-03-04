@@ -183,41 +183,28 @@ def get_data():
             ]
             return jsonify(filtered_data)
     else:
-        # Read from CSV for longer durations
+        # Read from CSV for longer durations using built-in csv module
         try:
             if not LOG_FILE.exists():
                 return jsonify([])
             
-            # Read CSV file using numpy
-            data_array = np.genfromtxt(
-                LOG_FILE,
-                delimiter=',',
-                skip_header=1,
-                dtype=None,
-                names=CSV_HEADERS,
-                encoding='utf-8'
-            )
+            filtered_data = []
+            with open(LOG_FILE, 'r') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    # Parse the timestamp and check if it's within the requested duration
+                    timestamp = datetime.fromisoformat(row['timestamp'])
+                    if duration <= 0 or timestamp > cutoff_time:
+                        # Convert string values to proper types
+                        processed_row = {
+                            'timestamp': row['timestamp'],
+                            'temperature': float(row['temperature']),
+                            'do': float(row['do']),
+                            'q': float(row['q'])
+                        }
+                        filtered_data.append(processed_row)
             
-            if len(data_array.shape) == 0:  # Empty or single row
-                if len(data_array) == 0:
-                    return jsonify([])
-                data_array = np.array([data_array])
-            
-            # Convert to list of dictionaries
-            records = []
-            for row in data_array:
-                timestamp = row['timestamp']
-                # Only include if within duration window
-                if duration <= 0 or datetime.fromisoformat(timestamp) > cutoff_time:
-                    record = {
-                        'timestamp': timestamp,
-                        'temperature': float(row['temperature']),
-                        'do': float(row['do']),
-                        'q': float(row['q'])
-                    }
-                    records.append(record)
-            
-            return jsonify(records)
+            return jsonify(filtered_data)
             
         except Exception as e:
             print(f"Error reading from CSV: {e}")
