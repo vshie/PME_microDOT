@@ -30,12 +30,12 @@ LABEL permissions='\
   },\
   "HostConfig": {\
     "Binds": [\
-      "/usr/blueos/extensions/do-sensor/logs:/app/logs",\
+      "/usr/blueos/extensions/do-sensor:/app/logs",\
       "/dev/ttyUSB0:/dev/ttyUSB0"\
     ],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
     "PortBindings": {\
-      "6423/tcp": [\
+      "6436/tcp": [\
         {\
           "HostPort": ""\
         }\
@@ -72,6 +72,6 @@ LABEL links='\
 {\
         "source": ""\
     }'
-LABEL requirements="core >= 1.0"
+LABEL requirements="core >= 1.1"
 
 ENTRYPOINT ["python", "-u", "/app/main.py"]

@@ -48,11 +48,6 @@
     <p>Serial Port in use: {{ serialPortInfo }}</p>
     <div class="control-container">
       <div class="control-group">
-        <label for="refreshSlider">Refresh Interval (seconds): {{ refreshInterval }}</label>
-        <br>
-        <input type="range" id="refreshSlider" min="1" max="10" v-model="refreshInterval">
-      </div>
-      <div class="control-group">
         <label for="timeWindow">Time Window:</label>
         <br>
         <select id="timeWindow" v-model="selectedDuration" @change="onDurationChange">
@@ -80,7 +75,6 @@
       el: '#app',
       data: {
         serialPortInfo: '',
-        refreshInterval: 5,
         selectedDuration: 'all',
         chart: null,
         measurements: [],
@@ -183,7 +177,7 @@
           }
           this.refreshTimer = setInterval(() => {
             this.fetchData();
-          }, this.refreshInterval * 1000);
+          }, 5000);
         },
         downloadLogs() {
           window.location.href = '/api/logs';
@@ -212,9 +206,6 @@
         this.fetchSerialInfo();
         this.fetchData();
         this.startRefreshTimer();
-        this.$watch('refreshInterval', () => {
-          this.startRefreshTimer();
-        });
       },
       beforeDestroy() {
         if (this.refreshTimer) {
