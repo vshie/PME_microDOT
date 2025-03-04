@@ -7,6 +7,7 @@ from flask import Flask, jsonify, send_from_directory, Response, request
 import os
 import csv
 from pathlib import Path
+import requests  # Add this import at the top
 
 app = Flask(__name__)
 
@@ -46,6 +47,34 @@ def write_to_csv(measurement):
         if not file_exists:
             writer.writeheader()
         writer.writerow(measurement)
+
+def send_to_mavlink(name, value):
+    """Send a named value float to Mavlink2Rest."""
+    # Pad the name to 10 characters with null bytes as required
+    name_array = list(name[:10])  # Take first 10 chars if name is too long
+    while len(name_array) < 10:
+        name_array.append('\u0000')
+    
+    payload = {
+        "header": {
+            "system_id": 255,
+            "component_id": 0,
+            "sequence": 0
+        },
+        "message": {
+            "type": "NAMED_VALUE_FLOAT",
+            "time_boot_ms": 0,
+            "value": value,
+            "name": name_array
+        }
+    }
+    
+    try:
+        response = requests.post('http://blueos.local:6040/v1/mavlink', json=payload)
+        if response.status_code != 200:
+            print(f"Failed to send {name} to Mavlink2Rest: {response.status_code}")
+    except Exception as e:
+        print(f"Error sending {name} to Mavlink2Rest: {e}")
 
 def read_sensor_loop():
     """Continuously poll the sensor every 5 seconds and update the global data."""
@@ -110,6 +139,10 @@ def read_sensor_loop():
                             data = data[-60:]
                         print("Stored measurement:", measurement)
                         write_to_csv(measurement)
+                        
+                        # Send values to Mavlink2Rest
+                        send_to_mavlink("DOT", temperature)  # DOT for DO Temperature
+                        send_to_mavlink("DO", do)  # DO for Dissolved Oxygen
                     else:
                         print("Measurement values out of expected range, skipping")
             else:
