@@ -13,7 +13,6 @@ COPY app/ .
 
 # Install Python dependencies (Flask and pySerial)
 RUN pip install flask pyserial
-
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.py
