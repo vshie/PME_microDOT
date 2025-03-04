@@ -75,7 +75,7 @@ def read_sensor_loop():
                 q = float(parts[4])
                 
                 measurement = {
-                    "timestamp": datetime.datetime.now().isoformat(),
+                    "timestamp": datetime.now().isoformat(),
                     "temperature": temperature,
                     "do": do,
                     "q": q
