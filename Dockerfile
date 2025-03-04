@@ -30,6 +30,9 @@ LABEL permissions='\
     "6423/tcp": {}\
   },\
   "HostConfig": {\
+    "Binds": [\
+      "/dev/ttyUSB0:/dev/ttyUSB0"\
+    ],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
     "PortBindings": {\
       "6423/tcp": [\
@@ -70,8 +73,5 @@ LABEL links='\
         "source": ""\
     }'
 LABEL requirements="core >= 1.0"
-
-# Optionally, mark /dev/ttyUSB0 as a volume to allow access to the serial device.
-VOLUME ["/dev/ttyUSB0"]
 
 ENTRYPOINT ["python", "-u", "/app/app.py"]
