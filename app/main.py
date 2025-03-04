@@ -175,7 +175,7 @@ def download_logs():
             LOG_DIR,
             LOG_FILE.name,
             as_attachment=True,
-            attachment_filename="sensor_data.csv"
+            download_name="sensor_data.csv"
         )
     return jsonify({"error": "No log file found"}), 404
 
@@ -193,7 +193,10 @@ def delete_logs():
 @app.route('/widget')
 def widget():
     """Serve the widget-optimized version of the dashboard."""
-    return send_from_directory('static', 'widget.html')
+    response = send_from_directory('static', 'widget.html')
+    # Add header to prevent BlueOS from wrapping the page
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    return response
 
 if __name__ == '__main__':
     # Run Flask on port 6436
