@@ -120,24 +120,14 @@ def get_serial():
 @app.route('/register_service')
 def register_service():
     """Register the extension as a service in BlueOS."""
-    return Response(
-        response=jsonify({
-            # Unique name for the service
-            "name": "DO Sensor",
-            # User-friendly name that appears in the menu
-            "description": "Dissolved Oxygen Sensor Monitor",
-            # Icon from Material Design Icons
-            "icon": "mdi-water",
-            # The company/developer name
-            "company": "Blue Robotics",
-            # Path to the webpage
-            "webpage": "/",
-            # Enable/disable status
-            "enabled": True
-        }).get_data(),
-        status=200,
-        mimetype='application/json'
-    )
+    return {
+        "name": "DO Sensor",
+        "description": "Dissolved Oxygen Sensor Monitor",
+        "icon": "mdi-sensors",
+        "company": "Blue Robotics",
+        "webpage": "/",
+        "enabled": True
+    }
 
 # Serve the Vue2 frontend (assumes index.html is in the "static" directory)
 @app.route('/')
