@@ -12,11 +12,8 @@ WORKDIR /app
 COPY app/ .
 
 # Install Python dependencies (Flask and pySerial and requests numpy)
-RUN pip install --upgrade pip && \
-    pip install flask==2.0.1 \
-    pyserial==3.5 \
-    requests==2.31.0 \
-    numpy==1.24.3
+RUN pip install flask pyserial requests numpy==1.24.3
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.py
