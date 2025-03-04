@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import threading
 import time
-import datetime
+from datetime import datetime, timedelta
 import serial
-from flask import Flask, jsonify, send_from_directory, Response
+from flask import Flask, jsonify, send_from_directory, Response, request
 
 app = Flask(__name__)
 
@@ -107,10 +107,28 @@ sensor_thread.start()
 
 @app.route('/api/data')
 def get_data():
-    """Return the latest 60 measurements as JSON."""
+    """Return measurements filtered by duration."""
+    # Get duration from query parameter (in minutes), default to all data
+    try:
+        duration = int(request.args.get('duration', 0))
+    except (TypeError, ValueError):
+        duration = 0
+    
     with DATA_LOCK:
-        # Return a copy of the data to prevent race conditions
-        return jsonify(list(data))
+        if duration <= 0:
+            # Return all data
+            return jsonify(list(data))
+        
+        # Calculate cutoff time
+        cutoff_time = datetime.now() - timedelta(minutes=duration)
+        
+        # Filter data by timestamp
+        filtered_data = [
+            measurement for measurement in data
+            if datetime.fromisoformat(measurement['timestamp']) > cutoff_time
+        ]
+        
+        return jsonify(filtered_data)
 
 @app.route('/api/serial')
 def get_serial():

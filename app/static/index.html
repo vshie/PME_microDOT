@@ -3,24 +3,38 @@
 <head>
   <meta charset="UTF-8">
   <title>DO Sensor Data Dashboard</title>
-  <!-- Vue 2, Axios, and Chart.js from CDNs -->
   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     #app { max-width: 800px; margin: auto; }
-    .slider-container { margin-bottom: 20px; }
+    .control-container { margin-bottom: 20px; display: flex; gap: 20px; align-items: center; }
+    .control-group { flex: 1; }
+    select { padding: 5px; font-size: 14px; width: 150px; }
   </style>
 </head>
 <body>
   <div id="app">
     <h1>DO Sensor Data Dashboard</h1>
     <p>Serial Port in use: {{ serialPortInfo }}</p>
-    <div class="slider-container">
-      <label for="refreshSlider">Refresh Interval (seconds): {{ refreshInterval }}</label>
-      <br>
-      <input type="range" id="refreshSlider" min="1" max="10" v-model="refreshInterval">
+    <div class="control-container">
+      <div class="control-group">
+        <label for="refreshSlider">Refresh Interval (seconds): {{ refreshInterval }}</label>
+        <br>
+        <input type="range" id="refreshSlider" min="1" max="10" v-model="refreshInterval">
+      </div>
+      <div class="control-group">
+        <label for="timeWindow">Time Window:</label>
+        <br>
+        <select id="timeWindow" v-model="selectedDuration" @change="onDurationChange">
+          <option value="all">All Data</option>
+          <option value="30">Last 30 Minutes</option>
+          <option value="10">Last 10 Minutes</option>
+          <option value="5">Last 5 Minutes</option>
+          <option value="1">Last Minute</option>
+        </select>
+      </div>
     </div>
     <canvas id="myChart" width="800" height="400"></canvas>
   </div>
@@ -30,7 +44,8 @@
       el: '#app',
       data: {
         serialPortInfo: '',
-        refreshInterval: 5, // default refresh interval (seconds)
+        refreshInterval: 5,
+        selectedDuration: 'all',
         chart: null,
         measurements: [],
         refreshTimer: null
@@ -45,7 +60,11 @@
           });
         },
         fetchData() {
-          axios.get('/api/data').then(response => {
+          const url = this.selectedDuration === 'all' 
+            ? '/api/data' 
+            : `/api/data?duration=${this.selectedDuration}`;
+
+          axios.get(url).then(response => {
             this.measurements = response.data;
             this.updateChart();
           }).catch(error => {
@@ -53,7 +72,6 @@
           });
         },
         updateChart() {
-          // Build arrays for the x-axis (time) and the three datasets.
           const labels = this.measurements.map(m => new Date(m.timestamp).toLocaleTimeString());
           const temperatureData = this.measurements.map(m => m.temperature);
           const doData = this.measurements.map(m => m.do);
@@ -90,6 +108,7 @@
                 ]
               },
               options: {
+                animation: { duration: 0 },
                 scales: {
                   xAxes: [{
                     display: true,
@@ -130,13 +149,15 @@
               }
             });
           } else {
-            // Update existing chart data.
             this.chart.data.labels = labels;
             this.chart.data.datasets[0].data = temperatureData;
             this.chart.data.datasets[1].data = doData;
             this.chart.data.datasets[2].data = qData;
-            this.chart.update();
+            this.chart.update('none');
           }
+        },
+        onDurationChange() {
+          this.fetchData();
         },
         startRefreshTimer() {
           if (this.refreshTimer) {
@@ -151,8 +172,7 @@
         this.fetchSerialInfo();
         this.fetchData();
         this.startRefreshTimer();
-        // Watch for changes to refreshInterval and restart the timer accordingly.
-        this.$watch('refreshInterval', (newVal) => {
+        this.$watch('refreshInterval', () => {
           this.startRefreshTimer();
         });
       },
