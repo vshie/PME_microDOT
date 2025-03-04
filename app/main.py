@@ -8,6 +8,7 @@ import os
 import csv
 from pathlib import Path
 import requests  # Add this import at the top
+import pandas as pd  # Add this import at the top
 
 app = Flask(__name__)
 
@@ -163,27 +164,48 @@ sensor_thread.start()
 @app.route('/api/data')
 def get_data():
     """Return measurements filtered by duration."""
-    # Get duration from query parameter (in minutes), default to all data
     try:
         duration = int(request.args.get('duration', 0))
     except (TypeError, ValueError):
         duration = 0
     
-    with DATA_LOCK:
-        if duration <= 0:
-            # Return all data
-            return jsonify(list(data))
-        
-        # Calculate cutoff time
-        cutoff_time = datetime.now() - timedelta(minutes=duration)
-        
-        # Filter data by timestamp
-        filtered_data = [
-            measurement for measurement in data
-            if datetime.fromisoformat(measurement['timestamp']) > cutoff_time
-        ]
-        
-        return jsonify(filtered_data)
+    cutoff_time = datetime.now() - timedelta(minutes=duration)
+    
+    if duration <= 5:
+        # Use in-memory data for short durations
+        with DATA_LOCK:
+            if duration <= 0:
+                return jsonify(list(data))
+            
+            filtered_data = [
+                measurement for measurement in data
+                if datetime.fromisoformat(measurement['timestamp']) > cutoff_time
+            ]
+            return jsonify(filtered_data)
+    else:
+        # Read from CSV for longer durations
+        try:
+            if not LOG_FILE.exists():
+                return jsonify([])
+            
+            # Read CSV file into pandas DataFrame
+            df = pd.read_csv(LOG_FILE)
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            
+            # Filter by duration
+            if duration > 0:
+                df = df[df['timestamp'] > cutoff_time]
+            
+            # Convert DataFrame back to list of dictionaries
+            # Ensure timestamp is in ISO format string
+            df['timestamp'] = df['timestamp'].dt.isoformat()
+            records = df.to_dict('records')
+            
+            return jsonify(records)
+            
+        except Exception as e:
+            print(f"Error reading from CSV: {e}")
+            return jsonify([])
 
 @app.route('/api/serial')
 def get_serial():
