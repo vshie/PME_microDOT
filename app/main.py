@@ -8,7 +8,7 @@ import os
 import csv
 from pathlib import Path
 import requests  # Add this import at the top
-import pandas as pd  # Add this import at the top
+import numpy as np  # Add this import
 
 app = Flask(__name__)
 
@@ -188,18 +188,34 @@ def get_data():
             if not LOG_FILE.exists():
                 return jsonify([])
             
-            # Read CSV file into pandas DataFrame
-            df = pd.read_csv(LOG_FILE)
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            # Read CSV file using numpy
+            data_array = np.genfromtxt(
+                LOG_FILE,
+                delimiter=',',
+                skip_header=1,
+                dtype=None,
+                names=CSV_HEADERS,
+                encoding='utf-8'
+            )
             
-            # Filter by duration
-            if duration > 0:
-                df = df[df['timestamp'] > cutoff_time]
+            if len(data_array.shape) == 0:  # Empty or single row
+                if len(data_array) == 0:
+                    return jsonify([])
+                data_array = np.array([data_array])
             
-            # Convert DataFrame back to list of dictionaries
-            # Ensure timestamp is in ISO format string
-            df['timestamp'] = df['timestamp'].dt.isoformat()
-            records = df.to_dict('records')
+            # Convert to list of dictionaries
+            records = []
+            for row in data_array:
+                timestamp = row['timestamp']
+                # Only include if within duration window
+                if duration <= 0 or datetime.fromisoformat(timestamp) > cutoff_time:
+                    record = {
+                        'timestamp': timestamp,
+                        'temperature': float(row['temperature']),
+                        'do': float(row['do']),
+                        'q': float(row['q'])
+                    }
+                    records.append(record)
             
             return jsonify(records)
             

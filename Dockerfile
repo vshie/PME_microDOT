@@ -11,8 +11,12 @@ WORKDIR /app
 # Copy app files (Flask backend and static Vue2 files)
 COPY app/ .
 
-# Install Python dependencies (Flask and pySerial)
-RUN pip install flask pyserial requests pandas
+# Install Python dependencies (Flask and pySerial and requests numpy)
+RUN pip install --upgrade pip && \
+    pip install flask==2.0.1 \
+    pyserial==3.5 \
+    requests==2.31.0 \
+    numpy==1.24.3
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.py
