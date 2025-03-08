@@ -104,12 +104,6 @@ def send_to_mavlink(name, value):
         'http://blueos.local:6040/v1/mavlink'           # Original hostname (as fallback)
     ]
     
-    # Don't send to Mavlink if we're in debug mode (detected by log date)
-    current_year = datetime.now().year
-    if current_year > 2024:  # If "future" date like 2025, we're likely in dev/debug mode
-        print(f"Debug mode detected (year: {current_year}), skipping Mavlink send")
-        return
-    
     # Pad the name to 10 characters with null bytes as required
     name_array = list(name[:10])  # Take first 10 chars if name is too long
     while len(name_array) < 10:
