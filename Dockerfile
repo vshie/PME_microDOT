@@ -1,11 +1,8 @@
 FROM python:3.11-slim-bullseye
 
-# Install system dependencies including build tools for numpy
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
     psmisc \
-    build-essential \
-    gcc \
-    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -14,8 +11,8 @@ WORKDIR /app
 # Copy app files (Flask backend and static Vue2 files)
 COPY app/ .
 
-# Install Python dependencies (Flask and pySerial and requests numpy)
-RUN pip install flask pyserial requests numpy==1.24.3
+# Install Python dependencies (Flask and pySerial and requests)
+RUN pip install flask pyserial requests
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

@@ -7,8 +7,7 @@ from flask import Flask, jsonify, send_from_directory, Response, request
 import os
 import csv
 from pathlib import Path
-import requests  # Add this import at the top
-import numpy as np  # Add this import
+import requests
 
 app = Flask(__name__)
 
