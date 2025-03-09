@@ -95,6 +95,9 @@ def write_to_csv(measurement):
 
 def send_to_mavlink(name, value):
     """Send a named value float to Mavlink2Rest."""
+    # TEST PRINT TO VERIFY UPDATED CODE
+    print("UPDATED CODE VERSION - NO YEAR CHECK - RUNNING...")
+    
     # For BlueOS, we'll use only the documented endpoint
     mavlink_url = 'http://blueos.local:6040/v1/mavlink'
     
@@ -213,7 +216,7 @@ def read_sensor_loop():
             else:
                 print("Invalid response format")
                 
-        except Exception as e:
+        except Exception as e:  
             print("Error processing measurement:", e)
         
         # Calculate remaining time in the 5-second cycle
