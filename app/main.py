@@ -95,20 +95,19 @@ def write_to_csv(measurement):
 
 def send_to_mavlink(name, value):
     """Send a named value float to Mavlink2Rest."""
-    # Configure Mavlink settings - use IP address instead of hostname
-    # Try both the local Docker host and the standard BlueOS IP
-    mavlink_urls = [
-        'http://host.docker.internal:6040/v1/mavlink',  # Docker host internal
-        'http://192.168.2.2:6040/v1/mavlink',           # Standard BlueOS IP
-        'http://localhost:6040/v1/mavlink',             # Local host
-        'http://blueos.local:6040/v1/mavlink'           # Original hostname (as fallback)
-    ]
+    # For BlueOS, we'll use only the documented endpoint
+    mavlink_url = 'http://blueos.local:6040/v1/mavlink'
     
-    # Pad the name to 10 characters with null bytes as required
-    name_array = list(name[:10])  # Take first 10 chars if name is too long
-    while len(name_array) < 10:
-        name_array.append('\u0000')
+    # Create name array exactly as shown in the documentation
+    # Each character must be a separate string in the array
+    name_array = []
+    for i in range(10):
+        if i < len(name):
+            name_array.append(name[i])
+        else:
+            name_array.append('\u0000')
     
+    # Create payload exactly as in the documentation
     payload = {
         "header": {
             "system_id": 255,
@@ -123,20 +122,21 @@ def send_to_mavlink(name, value):
         }
     }
     
-    # Try each URL in order until one succeeds
-    for url in mavlink_urls:
-        try:
-            response = requests.post(url, json=payload, timeout=1.0)  # Short timeout
-            if response.status_code == 200:
-                # Success, no need to try other URLs
-                return
-            # If not 200, try the next URL
-        except requests.exceptions.RequestException:
-            # If request fails, try the next URL
-            continue
+    # Print the exact payload for debugging
+    print(f"Sending to Mavlink2Rest: {payload}")
     
-    # If we get here, all URLs failed - log the error once but don't spam logs
-    print(f"Could not send {name} to any Mavlink2Rest endpoint - continuing without Mavlink integration")
+    try:
+        response = requests.post(mavlink_url, json=payload, timeout=2.0)
+        print(f"Mavlink2Rest response: {response.status_code}")
+        if response.status_code == 200:
+            print("Successfully sent to Mavlink2Rest")
+            return True
+        else:
+            print(f"Failed to send to Mavlink2Rest: {response.text}")
+            return False
+    except Exception as e:
+        print(f"Error sending to Mavlink2Rest: {e}")
+        return False
 
 def read_sensor_loop():
     """Continuously poll the sensor every 5 seconds and update the global data."""
@@ -202,9 +202,12 @@ def read_sensor_loop():
                         print("Stored measurement:", measurement)
                         write_to_csv(measurement)
                         
-                        # Send values to Mavlink2Rest
-                        send_to_mavlink("DOT", temperature)  # DOT for DO Temperature
-                        send_to_mavlink("DO", do)  # DO for Dissolved Oxygen
+                        # Send values to Mavlink2Rest with sensor names matching BlueRobotics convention
+                        # The exact sensor name is critical for proper logging in BlueOS
+                        send_success = send_to_mavlink("DO_T", temperature)  # DO_T for DO Temperature
+                        if send_success:
+                            # Only try sending the next value if the first one succeeded
+                            send_to_mavlink("DO_O", do)  # DO_O for Dissolved Oxygen
                     else:
                         print("Measurement values out of expected range, skipping")
             else:
