@@ -95,14 +95,16 @@ def write_to_csv(measurement):
 
 def send_to_mavlink(name, value):
     """Send a named value float to Mavlink2Rest."""
-    # TEST PRINT TO VERIFY UPDATED CODE
-    print("UPDATED CODE VERSION - NO YEAR CHECK - RUNNING...")
-    
-    # For BlueOS, we'll use only the documented endpoint
-    mavlink_url = 'http://blueos.local:6040/v1/mavlink'
+    # Try multiple possible endpoints
+    endpoints = [
+        'http://host.docker.internal:6040/v1/mavlink',
+        'http://localhost:6040/v1/mavlink',
+        'http://127.0.0.1:6040/v1/mavlink',
+        'http://192.168.2.2:6040/v1/mavlink',
+        'http://blueos.local:6040/v1/mavlink'
+    ]
     
     # Create name array exactly as shown in the documentation
-    # Each character must be a separate string in the array
     name_array = []
     for i in range(10):
         if i < len(name):
@@ -110,7 +112,6 @@ def send_to_mavlink(name, value):
         else:
             name_array.append('\u0000')
     
-    # Create payload exactly as in the documentation
     payload = {
         "header": {
             "system_id": 255,
@@ -125,21 +126,21 @@ def send_to_mavlink(name, value):
         }
     }
     
-    # Print the exact payload for debugging
-    print(f"Sending to Mavlink2Rest: {payload}")
+    # Try each endpoint
+    for endpoint in endpoints:
+        try:
+            response = requests.post(endpoint, json=payload, timeout=2.0)
+            if response.status_code == 200:
+                print(f"Successfully sent {name}={value} to Mavlink2Rest via {endpoint}")
+                return True
+            else:
+                continue  # Try next endpoint
+        except Exception:
+            continue  # Try next endpoint
     
-    try:
-        response = requests.post(mavlink_url, json=payload, timeout=2.0)
-        print(f"Mavlink2Rest response: {response.status_code}")
-        if response.status_code == 200:
-            print("Successfully sent to Mavlink2Rest")
-            return True
-        else:
-            print(f"Failed to send to Mavlink2Rest: {response.text}")
-            return False
-    except Exception as e:
-        print(f"Error sending to Mavlink2Rest: {e}")
-        return False
+    # Only print one error message if all endpoints fail
+    print(f"Could not send {name}={value} to any Mavlink2Rest endpoint")
+    return False
 
 def read_sensor_loop():
     """Continuously poll the sensor every 5 seconds and update the global data."""
