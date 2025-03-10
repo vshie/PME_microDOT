@@ -52,13 +52,37 @@ except Exception as e:
 
 def clean_response(response):
     """Clean and validate the sensor response string."""
+    # Debug the raw input
+    print(f"Cleaning response: '{response}'")
+    
     # Remove leading/trailing whitespace and any extra linebreaks
     lines = [line.strip() for line in response.split('\n') if line.strip()]
+    
     if not lines:
+        print("No valid lines found in response")
         return None
     
+    # Print all lines for debugging
+    if len(lines) > 1:
+        print(f"Multiple lines detected in response ({len(lines)})")
+        for i, line in enumerate(lines):
+            print(f"  Line {i+1}: '{line}'")
+    
     # Take only the last complete response if multiple are received
-    return lines[-1]
+    last_line = lines[-1]
+    
+    # Basic validation - should contain multiple commas for CSV format
+    if ',' not in last_line:
+        print(f"Invalid response format (no commas): '{last_line}'")
+        return None
+    
+    # The response should have at least 5 comma-separated values
+    parts = last_line.split(',')
+    if len(parts) < 5:
+        print(f"Invalid response format (not enough values): '{last_line}'")
+        return None
+        
+    return last_line
 
 def write_to_csv(measurement):
     """Write measurement to CSV file with file rotation to limit size."""
@@ -201,46 +225,77 @@ def read_sensor_loop():
             time.sleep(5)
             continue
         
-        # Allow sensor time to reply
-        time.sleep(0.5)
+        # Allow sensor time to reply - increase this a bit for more reliable readings
+        time.sleep(1.0)  # Increased from 0.5 to 1.0 seconds
         
         try:
-            raw_response = ser.read_all().decode('utf-8')
+            # Try reading data multiple times if necessary
+            max_read_attempts = 3
+            read_attempt = 0
+            raw_response = ""
+            
+            while read_attempt < max_read_attempts:
+                read_attempt += 1
+                
+                # Read what's available
+                bytes_waiting = ser.in_waiting
+                if bytes_waiting > 0:
+                    raw_response += ser.read(bytes_waiting).decode('utf-8', errors='replace')
+                else:
+                    # If no data available and not first attempt, wait a bit more
+                    if read_attempt > 1:
+                        print(f"No data in serial buffer (attempt {read_attempt}/{max_read_attempts})")
+                    time.sleep(0.5)
+                
+                # Check if we have what looks like a valid response
+                if ',' in raw_response and len(raw_response.strip()) > 5:
+                    break
+            
+            # Debug raw response to help diagnose issues
+            print(f"Raw response ({len(raw_response)} bytes): {raw_response.strip()}")
+            
             cleaned_response = clean_response(raw_response)
             if not cleaned_response:
                 print("Invalid or empty response received, skipping.")
                 continue
+            
+            print(f"Cleaned response: {cleaned_response}")
                 
             parts = [p.strip() for p in cleaned_response.split(',')]
             if len(parts) >= 5:
-                temperature = float(parts[2])
-                do = float(parts[3])
-                q = float(parts[4])
-                
-                measurement = {
-                    "timestamp": datetime.now().isoformat(),
-                    "temperature": temperature,
-                    "do": do,
-                    "q": q
-                }
-                
-                with DATA_LOCK:
-                    # Only append if values are reasonable
-                    if -10 <= temperature <= 50 and 0 <= do <= 20 and 0 <= q <= 1:
-                        data.append(measurement)
-                        if len(data) > 60:
-                            data = data[-60:]
-                        print("Stored measurement:", measurement)
-                        write_to_csv(measurement)
-                        
-                        # Send values to Mavlink2Rest with sensor names matching BlueRobotics convention
-                        # The exact sensor name is critical for proper logging in BlueOS
-                        send_success = send_to_mavlink("DO_T", temperature)  # DO_T for DO Temperature
-                        if send_success:
-                            # Only try sending the next value if the first one succeeded
-                            send_to_mavlink("DO_O", do)  # DO_O for Dissolved Oxygen
-                    else:
-                        print("Measurement values out of expected range, skipping")
+                try:
+                    temperature = float(parts[2])
+                    do = float(parts[3])
+                    q = float(parts[4])
+                    
+                    measurement = {
+                        "timestamp": datetime.now().isoformat(),
+                        "temperature": temperature,
+                        "do": do,
+                        "q": q
+                    }
+                    
+                    with DATA_LOCK:
+                        # Only append if values are reasonable
+                        if -10 <= temperature <= 50 and 0 <= do <= 20 and 0 <= q <= 1:
+                            data.append(measurement)
+                            if len(data) > 60:
+                                data = data[-60:]
+                            print("Stored measurement:", measurement)
+                            write_to_csv(measurement)
+                            
+                            # Send values to Mavlink2Rest with sensor names matching BlueRobotics convention
+                            # The exact sensor name is critical for proper logging in BlueOS
+                            send_success = send_to_mavlink("DO_T", temperature)  # DO_T for DO Temperature
+                            if send_success:
+                                # Only try sending the next value if the first one succeeded
+                                send_to_mavlink("DO_O", do)  # DO_O for Dissolved Oxygen
+                        else:
+                            print("Measurement values out of expected range, skipping")
+                except (ValueError, IndexError) as e:
+                    print(f"Error parsing values from response: {e}")
+                    print(f"Parts: {parts}")
+                    continue
             else:
                 print("Invalid response format")
                 
