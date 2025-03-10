@@ -14,8 +14,9 @@ RUN mkdir -p /app/logs && chmod 777 /app/logs
 # Copy app files (Flask backend and static Vue2 files)
 COPY app/ .
 
-# Install Python dependencies (Flask and pySerial and requests)
-RUN pip install flask pyserial requests
+# Install Python dependencies - with fixes for ARM architecture
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir flask==2.0.1 pyserial==3.5 requests==2.28.1 Werkzeug==2.0.3 Jinja2==3.0.3 MarkupSafe==2.0.1 itsdangerous==2.0.1
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
