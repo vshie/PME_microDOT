@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /app
 
+# Create logs directory inside the container
+RUN mkdir -p /app/logs && chmod 777 /app/logs
+
 # Copy app files (Flask backend and static Vue2 files)
 COPY app/ .
 
@@ -18,8 +21,8 @@ RUN pip install flask pyserial requests
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app.py
 
-# Expose port 6423 for Flask
-EXPOSE 6423
+# Expose port for Flask
+EXPOSE 6436
 
 LABEL version="0.1"
 
@@ -31,7 +34,7 @@ LABEL permissions='\
   },\
   "HostConfig": {\
     "Binds": [\
-      "/usr/blueos/extensions/do-sensor:/app/logs",\
+      "/usr/blueos/extensions/dosensor:/app/logs",\
       "/dev/ttyUSB0:/dev/ttyUSB0"\
     ],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\

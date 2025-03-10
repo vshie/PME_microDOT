@@ -75,7 +75,7 @@
       el: '#app',
       data: {
         serialPortInfo: '',
-        selectedDuration: 'all',
+        selectedDuration: '5',
         chart: null,
         measurements: [],
         refreshTimer: null
@@ -90,9 +90,11 @@
           });
         },
         fetchData() {
+          const maxPoints = 500; // Maximum number of points to display on chart
+          
           const url = this.selectedDuration === 'all' 
-            ? '/api/data' 
-            : `/api/data?duration=${this.selectedDuration}`;
+            ? `/api/data?max_points=${maxPoints}` 
+            : `/api/data?duration=${this.selectedDuration}&max_points=${maxPoints}`;
 
           axios.get(url).then(response => {
             this.measurements = response.data;

@@ -20,13 +20,38 @@ DATA_LOCK = threading.Lock()
 SERIAL_PORT = "/dev/ttyUSB0"
 BAUD_RATE = 9600
 
-# Add after the DATA_LOCK definition
-LOG_DIR = Path("/app/logs")
+# Set up logging paths - check both internal and external storage
+BLUEOS_EXT_DIR = "/usr/blueos/extensions/dosensor"  # External persistent location
+INTERNAL_LOG_DIR = Path("/app/logs")                 # Internal container location
+
+# Try to use the BlueOS extensions directory if it exists and is writable
+try:
+    # First, ensure the container's internal log directory exists
+    INTERNAL_LOG_DIR.mkdir(exist_ok=True)
+    
+    # Check if we can access the external BlueOS directory
+    if os.path.exists(BLUEOS_EXT_DIR) and os.access(BLUEOS_EXT_DIR, os.W_OK):
+        LOG_DIR = Path(BLUEOS_EXT_DIR)
+        print(f"Using external BlueOS storage: {BLUEOS_EXT_DIR}")
+    else:
+        # Attempt to create the directory if it doesn't exist
+        try:
+            os.makedirs(BLUEOS_EXT_DIR, exist_ok=True)
+            LOG_DIR = Path(BLUEOS_EXT_DIR)
+            print(f"Created and using external BlueOS storage: {BLUEOS_EXT_DIR}")
+        except Exception as e:
+            LOG_DIR = INTERNAL_LOG_DIR
+            print(f"External storage not available ({e}), using internal storage: {INTERNAL_LOG_DIR}")
+except Exception as e:
+    LOG_DIR = INTERNAL_LOG_DIR
+    print(f"Error setting up log directories: {e}, using internal storage: {INTERNAL_LOG_DIR}")
+
+# Set up CSV file and headers
 LOG_FILE = LOG_DIR / "sensor_data.csv"
 CSV_HEADERS = ["timestamp", "temperature", "do", "q"]
+MAX_CSV_SIZE_MB = 10  # Limit file size to 10MB before rotation
 
-# Create logs directory if it doesn't exist
-LOG_DIR.mkdir(exist_ok=True)
+print(f"Log files will be stored at: {LOG_FILE}")
 
 def clean_response(response):
     """Clean and validate the sensor response string."""
@@ -40,8 +65,6 @@ def clean_response(response):
 
 def write_to_csv(measurement):
     """Write measurement to CSV file with file rotation to limit size."""
-    MAX_CSV_ROWS = 100000  # Limit to ~100K rows (roughly ~140 hours of data at 5s intervals)
-    
     try:
         log_file_path = str(LOG_FILE)
         log_dir = os.path.dirname(log_file_path)
@@ -51,36 +74,30 @@ def write_to_csv(measurement):
         
         file_exists = os.path.exists(log_file_path)
         
-        # Check if we need to rotate the file (only if it exists)
+        # Check if we need to rotate the file based on size (only if it exists)
         if file_exists:
             try:
-                row_count = 0
-                with open(log_file_path, 'r') as f:
-                    row_count = sum(1 for _ in f) - 1  # Subtract 1 for header
+                file_size_mb = os.path.getsize(log_file_path) / (1024 * 1024)  # Convert to MB
                 
-                # If file is too big, rotate it (keep most recent data)
-                if row_count >= MAX_CSV_ROWS:
-                    print(f"Rotating CSV file (current rows: {row_count})")
+                # If file is too big, rotate it
+                if file_size_mb >= MAX_CSV_SIZE_MB:
+                    print(f"Rotating CSV file (current size: {file_size_mb:.2f} MB)")
                     
-                    # Read existing data
-                    all_rows = []
-                    with open(log_file_path, 'r') as f:
-                        reader = csv.DictReader(f)
-                        all_rows = list(reader)
+                    # Create a backup filename with timestamp
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    backup_file = os.path.join(log_dir, f"sensor_data_backup_{timestamp}.csv")
                     
-                    # Keep the most recent rows (half the maximum)
-                    rows_to_keep = all_rows[-int(MAX_CSV_ROWS/2):]
+                    # Rename the current file as backup
+                    os.rename(log_file_path, backup_file)
+                    print(f"Previous data backed up to {backup_file}")
                     
-                    # Write back to file
-                    with open(log_file_path, 'w', newline='') as f:
-                        writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
-                        writer.writeheader()
-                        writer.writerows(rows_to_keep)
+                    # File no longer exists after rename, so update flag
+                    file_exists = False
             except Exception as rotate_error:
                 print(f"Error rotating CSV file: {rotate_error}")
                 # If rotation fails, just continue with append
         
-        # Append the new measurement
+        # Append the new measurement (or create new file if needed)
         with open(log_file_path, 'a', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
             if not file_exists:
@@ -234,8 +251,10 @@ def get_data():
     """Return measurements filtered by duration."""
     try:
         duration = int(request.args.get('duration', 0))
+        max_points = int(request.args.get('max_points', 1000))  # Default to max 1000 points
     except (TypeError, ValueError):
         duration = 0
+        max_points = 1000
     
     # For "All Data" selection, use duration=-1 to indicate we want everything
     all_data_requested = duration <= 0
@@ -243,7 +262,7 @@ def get_data():
     # Only calculate cutoff time if we're not requesting all data
     cutoff_time = datetime.now() - timedelta(minutes=duration) if not all_data_requested else None
     
-    print(f"Data request: duration={duration}, all_data={all_data_requested}")
+    print(f"Data request: duration={duration}, all_data={all_data_requested}, max_points={max_points}")
     
     # Always return in-memory data for short durations (5 minutes or less)
     if duration <= 5 and not all_data_requested:
@@ -280,6 +299,8 @@ def get_data():
                         with DATA_LOCK:
                             return jsonify(list(data))
                     
+                    # Count rows and collect matching data
+                    all_matching_rows = []
                     for row in reader:
                         row_count += 1
                         try:
@@ -295,11 +316,11 @@ def get_data():
                                         'do': float(row['do']),
                                         'q': float(row['q'])
                                     }
-                                    filtered_data.append(processed_row)
+                                    all_matching_rows.append(processed_row)
                             else:
                                 error_count += 1
-                                missing = [field for field in CSV_HEADERS if field not in row]
                                 if error_count < 5:  # Limit the number of error messages
+                                    missing = [field for field in CSV_HEADERS if field not in row]
                                     print(f"Row {row_count} missing fields: {missing}")
                         except (ValueError, KeyError) as e:
                             error_count += 1
@@ -309,6 +330,18 @@ def get_data():
                     print(f"Error reading CSV file: {file_error}")
                     with DATA_LOCK:
                         return jsonify(list(data))
+            
+            # If we have more points than max_points, we need to downsample
+            total_points = len(all_matching_rows)
+            if total_points > max_points and max_points > 0:
+                # Simple downsampling - take evenly spaced points
+                step = total_points // max_points
+                filtered_data = all_matching_rows[::step]
+                if len(filtered_data) > max_points:  # Ensure we don't exceed max_points
+                    filtered_data = filtered_data[:max_points]
+                print(f"Downsampled from {total_points} to {len(filtered_data)} points")
+            else:
+                filtered_data = all_matching_rows
             
             print(f"CSV read: {row_count} total rows, {len(filtered_data)} returned, {error_count} errors")
             
