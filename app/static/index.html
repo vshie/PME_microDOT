@@ -2,80 +2,197 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>DO Sensor Data Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PME microDOT</title>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@mdi/font@6.x/css/materialdesignicons.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    #app { max-width: 800px; margin: auto; }
-    .control-container { margin-bottom: 20px; display: flex; gap: 20px; align-items: center; }
-    .control-group { flex: 1; }
-    select { padding: 5px; font-size: 14px; width: 150px; }
-    .download-btn {
-      padding: 8px 16px;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    .download-btn:hover {
-      background-color: #45a049;
-    }
-    .button-group {
+    [v-cloak] { display: none; }
+    .logo-container {
       display: flex;
-      gap: 10px;
+      align-items: center;
+      gap: 15px;
     }
-    .delete-btn {
-      padding: 8px 16px;
-      background-color: #f44336;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
+    .logo-img {
+      height: 50px;
+      width: auto;
     }
-    .delete-btn:hover {
-      background-color: #da190b;
+    .header-title {
+      font-size: 1.5rem;
+      font-weight: 500;
+      margin: 0;
+    }
+    .theme--dark.v-sheet {
+      background-color: #1E1E1E;
+    }
+    .theme--dark.v-card {
+      background-color: #2D2D2D;
+    }
+    .chart-container {
+      padding: 10px;
+      height: 400px;
+      position: relative;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .info-chip {
+      margin: 0 4px;
     }
   </style>
 </head>
 <body>
-  <div id="app">
-    <h1>DO Sensor Data Dashboard</h1>
-    <p>Serial Port in use: {{ serialPortInfo }}</p>
-    <div class="control-container">
-      <div class="control-group">
-        <label for="timeWindow">Time Window:</label>
-        <br>
-        <select id="timeWindow" v-model="selectedDuration" @change="onDurationChange">
-          <option value="all">All Data</option>
-          <option value="30">Last 30 Minutes</option>
-          <option value="10">Last 10 Minutes</option>
-          <option value="5">Last 5 Minutes</option>
-          <option value="1">Last Minute</option>
-        </select>
-      </div>
-      <div class="control-group">
-        <label>&nbsp;</label>
-        <br>
-        <div class="button-group">
-          <button @click="downloadLogs" class="download-btn">Download Logs</button>
-          <button @click="confirmDeleteLogs" class="delete-btn">Delete Logs</button>
+  <div id="app" v-cloak>
+    <v-app dark>
+      <v-app-bar app dark dense>
+        <div class="logo-container">
+          <img src="PMElogo.jpeg" alt="PME Logo" class="logo-img">
+          <h1 class="header-title">PME microDOT</h1>
         </div>
-      </div>
-    </div>
-    <canvas id="myChart" width="800" height="400"></canvas>
+        <v-spacer></v-spacer>
+        <v-chip class="info-chip" small>
+          <v-icon small left>mdi-serial-port</v-icon>
+          {{ serialPortInfo }}
+        </v-chip>
+      </v-app-bar>
+
+      <v-main>
+        <v-container fluid>
+          <v-tabs v-model="activeTab" background-color="transparent" color="primary">
+            <v-tab>
+              <v-icon small left>mdi-chart-line</v-icon>
+              Measurement
+            </v-tab>
+            <v-tab>
+              <v-icon small left>mdi-cog</v-icon>
+              Settings
+            </v-tab>
+          </v-tabs>
+
+          <v-tabs-items v-model="activeTab">
+            <!-- Measurement Tab -->
+            <v-tab-item>
+              <v-card flat>
+                <v-card-text>
+                  <v-row>
+                    <v-col cols="12">
+                      <v-card elevation="2">
+                        <v-card-title class="card-header">
+                          <span>Dissolved Oxygen Readings</span>
+                          <v-select
+                            v-model="selectedDuration"
+                            :items="durationOptions"
+                            label="Time Window"
+                            dense
+                            outlined
+                            hide-details
+                            @change="onDurationChange"
+                            style="max-width: 200px"
+                          ></v-select>
+                        </v-card-title>
+                        <v-card-text>
+                          <div class="chart-container">
+                            <canvas id="myChart"></canvas>
+                          </div>
+                        </v-card-text>
+                      </v-card>
+                    </v-col>
+                  </v-row>
+                </v-card-text>
+              </v-card>
+            </v-tab-item>
+
+            <!-- Settings Tab -->
+            <v-tab-item>
+              <v-card flat>
+                <v-card-text>
+                  <v-row>
+                    <v-col cols="12" md="6">
+                      <v-card elevation="2">
+                        <v-card-title>Data Management</v-card-title>
+                        <v-card-text>
+                          <v-row>
+                            <v-col cols="12">
+                              <v-btn 
+                                color="primary" 
+                                block 
+                                @click="downloadLogs"
+                                class="mb-4"
+                              >
+                                <v-icon left>mdi-download</v-icon>
+                                Download Logs
+                              </v-btn>
+                              
+                              <v-btn 
+                                color="error" 
+                                block 
+                                @click="confirmDeleteLogs"
+                              >
+                                <v-icon left>mdi-delete</v-icon>
+                                Delete Logs
+                              </v-btn>
+                            </v-col>
+                          </v-row>
+                        </v-card-text>
+                      </v-card>
+                    </v-col>
+                    
+                    <v-col cols="12" md="6">
+                      <v-card elevation="2">
+                        <v-card-title>About</v-card-title>
+                        <v-card-text>
+                          <p>PME microDOT is a dashboard for monitoring dissolved oxygen and temperature data from PME sensors.</p>
+                          <p class="mb-0"><strong>Version:</strong> 1.0.0</p>
+                        </v-card-text>
+                      </v-card>
+                    </v-col>
+                  </v-row>
+                </v-card-text>
+              </v-card>
+            </v-tab-item>
+          </v-tabs-items>
+        </v-container>
+      </v-main>
+    </v-app>
   </div>
   
   <script>
     new Vue({
       el: '#app',
+      vuetify: new Vuetify({
+        theme: {
+          dark: true,
+          themes: {
+            dark: {
+              primary: '#1976D2',
+              secondary: '#424242',
+              accent: '#82B1FF',
+              error: '#FF5252',
+              info: '#2196F3',
+              success: '#4CAF50',
+              warning: '#FFC107'
+            }
+          }
+        }
+      }),
       data: {
+        activeTab: 0,
         serialPortInfo: '',
         selectedDuration: '5',
+        durationOptions: [
+          { text: 'Last Minute', value: '1' },
+          { text: 'Last 5 Minutes', value: '5' },
+          { text: 'Last 10 Minutes', value: '10' },
+          { text: 'Last 30 Minutes', value: '30' },
+          { text: 'All Data', value: 'all' }
+        ],
         chart: null,
         measurements: [],
         refreshTimer: null
@@ -118,45 +235,93 @@
                   {
                     label: 'Oxygen Concentration (mg/l)',
                     data: doData,
-                    borderColor: 'blue',
-                    fill: false,
+                    borderColor: '#2196F3',
+                    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    fill: true,
                     yAxisID: 'y-do'
                   },
                   {
                     label: 'Temperature (°C)',
                     data: temperatureData,
-                    borderColor: 'red',
-                    fill: false,
+                    borderColor: '#FF5252',
+                    backgroundColor: 'rgba(255, 82, 82, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    fill: true,
                     yAxisID: 'y-temp'
                   }
                 ]
               },
               options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 animation: { duration: 0 },
+                tooltips: {
+                  mode: 'index',
+                  intersect: false,
+                  backgroundColor: 'rgba(50, 50, 50, 0.9)',
+                  titleFontFamily: 'Roboto',
+                  bodyFontFamily: 'Roboto'
+                },
+                hover: {
+                  mode: 'nearest',
+                  intersect: true
+                },
+                legend: {
+                  labels: {
+                    fontFamily: 'Roboto',
+                    fontColor: '#FFFFFF'
+                  }
+                },
                 scales: {
                   xAxes: [{
                     display: true,
+                    gridLines: {
+                      color: 'rgba(255, 255, 255, 0.1)'
+                    },
                     scaleLabel: {
                       display: true,
-                      labelString: 'Time'
+                      labelString: 'Time',
+                      fontColor: '#FFFFFF'
+                    },
+                    ticks: {
+                      fontColor: '#FFFFFF'
                     }
                   }],
                   yAxes: [
                     {
                       id: 'y-do',
                       position: 'left',
+                      gridLines: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                      },
                       scaleLabel: {
                         display: true,
-                        labelString: 'Oxygen (mg/l)'
+                        labelString: 'Oxygen (mg/l)',
+                        fontColor: '#FFFFFF'
+                      },
+                      ticks: {
+                        fontColor: '#FFFFFF'
                       }
                     },
                     {
                       id: 'y-temp',
                       position: 'right',
-                      gridLines: { drawOnChartArea: false },
+                      gridLines: { 
+                        drawOnChartArea: false,
+                        color: 'rgba(255, 255, 255, 0.1)'
+                      },
                       scaleLabel: {
                         display: true,
-                        labelString: 'Temperature (°C)'
+                        labelString: 'Temperature (°C)',
+                        fontColor: '#FFFFFF'
+                      },
+                      ticks: {
+                        fontColor: '#FFFFFF'
                       }
                     }
                   ]
@@ -185,22 +350,27 @@
           window.location.href = '/api/logs';
         },
         confirmDeleteLogs() {
-          if (confirm('Are you sure you want to delete all logs? This cannot be undone.')) {
-            this.deleteLogs();
-          }
+          this.$vuetify.dialog.confirm({
+            title: 'Warning',
+            text: 'Are you sure you want to delete all logs? This action cannot be undone.',
+            persistant: true,
+            color: 'error'
+          }).then(res => {
+            if (res) this.deleteLogs();
+          });
         },
         deleteLogs() {
           axios.post('/api/logs/delete')
             .then(response => {
               if (response.data.success) {
-                alert('Logs deleted successfully');
+                this.$vuetify.snackbar.success = 'Logs deleted successfully';
               } else {
-                alert('Error deleting logs: ' + response.data.message);
+                this.$vuetify.snackbar.error = 'Error deleting logs: ' + response.data.message;
               }
             })
             .catch(error => {
               console.error('Error deleting logs:', error);
-              alert('Error deleting logs. Check console for details.');
+              this.$vuetify.snackbar.error = 'Error deleting logs. Check console for details.';
             });
         }
       },
