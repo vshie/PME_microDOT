@@ -3,7 +3,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 import serial
-from flask import Flask, jsonify, send_from_directory, Response, request
+from flask import Flask, jsonify, send_from_directory, Response, request, send_file
 import os
 import csv
 from pathlib import Path
@@ -20,38 +20,35 @@ DATA_LOCK = threading.Lock()
 SERIAL_PORT = "/dev/ttyUSB0"
 BAUD_RATE = 9600
 
-# Set up logging paths - check both internal and external storage
-BLUEOS_EXT_DIR = "/usr/blueos/extensions/dosensor"  # External persistent location
-INTERNAL_LOG_DIR = Path("/app/logs")                 # Internal container location
-
-# Try to use the BlueOS extensions directory if it exists and is writable
-try:
-    # First, ensure the container's internal log directory exists
-    INTERNAL_LOG_DIR.mkdir(exist_ok=True)
-    
-    # Check if we can access the external BlueOS directory
-    if os.path.exists(BLUEOS_EXT_DIR) and os.access(BLUEOS_EXT_DIR, os.W_OK):
-        LOG_DIR = Path(BLUEOS_EXT_DIR)
-        print(f"Using external BlueOS storage: {BLUEOS_EXT_DIR}")
-    else:
-        # Attempt to create the directory if it doesn't exist
-        try:
-            os.makedirs(BLUEOS_EXT_DIR, exist_ok=True)
-            LOG_DIR = Path(BLUEOS_EXT_DIR)
-            print(f"Created and using external BlueOS storage: {BLUEOS_EXT_DIR}")
-        except Exception as e:
-            LOG_DIR = INTERNAL_LOG_DIR
-            print(f"External storage not available ({e}), using internal storage: {INTERNAL_LOG_DIR}")
-except Exception as e:
-    LOG_DIR = INTERNAL_LOG_DIR
-    print(f"Error setting up log directories: {e}, using internal storage: {INTERNAL_LOG_DIR}")
-
-# Set up CSV file and headers
+# IMPORTANT: In Docker with a volume mount from host to /app/logs,
+# we should ALWAYS use the /app/logs path directly, as this is what's
+# mounted to the host directory.
+LOG_DIR = Path("/app/logs")
 LOG_FILE = LOG_DIR / "sensor_data.csv"
 CSV_HEADERS = ["timestamp", "temperature", "do", "q"]
 MAX_CSV_SIZE_MB = 10  # Limit file size to 10MB before rotation
 
-print(f"Log files will be stored at: {LOG_FILE}")
+# Create logs directory if it doesn't exist (for safety)
+try:
+    os.makedirs(str(LOG_DIR), exist_ok=True)
+    print(f"Using log directory: {LOG_DIR}")
+    print(f"Log directory exists: {LOG_DIR.exists()}")
+    print(f"Log directory is writable: {os.access(str(LOG_DIR), os.W_OK)}")
+    print(f"Log file will be stored at: {LOG_FILE}")
+except Exception as e:
+    print(f"Error creating log directory: {e}")
+
+# List all directories in /app to help diagnose
+try:
+    print("Contents of /app directory:")
+    for item in os.listdir("/app"):
+        item_path = os.path.join("/app", item)
+        if os.path.isdir(item_path):
+            print(f"  - {item}/ (directory)")
+        else:
+            print(f"  - {item} (file)")
+except Exception as e:
+    print(f"Error listing /app directory: {e}")
 
 def clean_response(response):
     """Clean and validate the sensor response string."""
@@ -69,15 +66,23 @@ def write_to_csv(measurement):
         log_file_path = str(LOG_FILE)
         log_dir = os.path.dirname(log_file_path)
         
+        # Debug info
+        print(f"Writing to log file: {log_file_path}")
+        print(f"Log directory: {log_dir}")
+        print(f"Directory exists: {os.path.exists(log_dir)}")
+        print(f"Directory writable: {os.access(log_dir, os.W_OK)}")
+        
         # Ensure the log directory exists
         os.makedirs(log_dir, exist_ok=True)
         
         file_exists = os.path.exists(log_file_path)
+        print(f"Log file exists before write: {file_exists}")
         
         # Check if we need to rotate the file based on size (only if it exists)
         if file_exists:
             try:
                 file_size_mb = os.path.getsize(log_file_path) / (1024 * 1024)  # Convert to MB
+                print(f"Current log file size: {file_size_mb:.2f} MB")
                 
                 # If file is too big, rotate it
                 if file_size_mb >= MAX_CSV_SIZE_MB:
@@ -106,6 +111,11 @@ def write_to_csv(measurement):
             # Flush to ensure data is written immediately
             f.flush()
             os.fsync(f.fileno())
+        
+        # Verify file was written
+        print(f"Log file exists after write: {os.path.exists(log_file_path)}")
+        if os.path.exists(log_file_path):
+            print(f"Log file size after write: {os.path.getsize(log_file_path)} bytes")
             
     except Exception as e:
         print(f"Error writing to CSV: {e}")
@@ -378,24 +388,69 @@ def index():
 @app.route('/api/logs')
 def download_logs():
     """Download the log file."""
-    if LOG_FILE.exists():
-        return send_from_directory(
-            LOG_DIR,
-            LOG_FILE.name,
-            as_attachment=True,
-            download_name="sensor_data.csv"
-        )
-    return jsonify({"error": "No log file found"}), 404
+    log_file_path = str(LOG_FILE)
+    
+    # Print debug info
+    print(f"Download requested for log file: {log_file_path}")
+    print(f"File exists: {os.path.exists(log_file_path)}")
+    if os.path.exists(log_file_path):
+        print(f"File size: {os.path.getsize(log_file_path)} bytes")
+    
+    # List all files in the logs directory
+    log_dir = os.path.dirname(log_file_path)
+    print(f"Contents of log directory ({log_dir}):")
+    if os.path.exists(log_dir):
+        for item in os.listdir(log_dir):
+            item_path = os.path.join(log_dir, item)
+            if os.path.isfile(item_path):
+                print(f"  - {item} ({os.path.getsize(item_path)} bytes)")
+            else:
+                print(f"  - {item}/ (directory)")
+    
+    try:
+        if os.path.exists(log_file_path):
+            response = send_file(
+                log_file_path,
+                mimetype='text/csv',
+                as_attachment=True,
+                download_name='do_sensor_logs.csv'
+            )
+            return response
+        else:
+            return "No log file found", 404
+    except Exception as e:
+        return f"Error accessing log file: {e}", 500
 
 @app.route('/api/logs/delete', methods=['POST'])
 def delete_logs():
     """Delete the log file."""
+    log_file_path = str(LOG_FILE)
+    
+    # Print debug info
+    print(f"Delete requested for log file: {log_file_path}")
+    print(f"File exists before delete: {os.path.exists(log_file_path)}")
+    
     try:
-        if LOG_FILE.exists():
-            LOG_FILE.unlink()
-            return jsonify({"success": True, "message": "Log file deleted"})
+        if os.path.exists(log_file_path):
+            # List backup files in the directory
+            log_dir = os.path.dirname(log_file_path)
+            backup_files = [f for f in os.listdir(log_dir) if f.startswith("sensor_data_backup_")]
+            
+            # Delete the main log file
+            os.remove(log_file_path)
+            print(f"Main log file deleted: {log_file_path}")
+            
+            # Delete any backup files
+            for backup in backup_files:
+                backup_path = os.path.join(log_dir, backup)
+                os.remove(backup_path)
+                print(f"Backup file deleted: {backup_path}")
+            
+            return jsonify({"success": True, "message": f"Deleted log file and {len(backup_files)} backup files"})
+        
         return jsonify({"success": True, "message": "No log file to delete"})
     except Exception as e:
+        print(f"Error deleting log file: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route('/widget')
