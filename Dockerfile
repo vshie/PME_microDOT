@@ -14,17 +14,15 @@ RUN mkdir -p /app/logs && chmod 777 /app/logs
 # Copy app files (Flask backend and static Vue2 files)
 COPY app/ .
 
-# Create a requirements.txt file directly in the Dockerfile to avoid hash issues
-RUN echo "flask==2.0.1" > /app/requirements.txt && \
-    echo "pyserial==3.5" >> /app/requirements.txt && \
-    echo "requests==2.28.1" >> /app/requirements.txt && \
-    echo "Werkzeug==2.0.3" >> /app/requirements.txt && \
-    echo "Jinja2==3.0.3" >> /app/requirements.txt && \
-    echo "MarkupSafe==2.0.1" >> /app/requirements.txt && \
-    echo "itsdangerous==2.0.1" >> /app/requirements.txt
-
-# Install dependencies without hash verification
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Install Python dependencies directly (without upgrading pip)
+# Install each package separately to avoid hash verification issues
+RUN pip install --no-cache-dir flask==2.0.1 && \
+    pip install --no-cache-dir pyserial==3.5 && \
+    pip install --no-cache-dir requests==2.28.1 && \
+    pip install --no-cache-dir Werkzeug==2.0.3 && \
+    pip install --no-cache-dir Jinja2==3.0.3 && \
+    pip install --no-cache-dir MarkupSafe==2.0.1 && \
+    pip install --no-cache-dir itsdangerous==2.0.1
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
