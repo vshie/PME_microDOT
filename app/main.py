@@ -440,6 +440,11 @@ def register_service():
 def index():
     return send_from_directory('static', 'index.html')
 
+# Add explicit route for static files
+@app.route('/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
+
 @app.route('/api/logs')
 def download_logs():
     """Download the log file."""

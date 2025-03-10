@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
   <style>
     [v-cloak] { display: none; }
     .logo-container {
@@ -133,7 +133,7 @@
                               <v-btn 
                                 color="error" 
                                 block 
-                                @click="confirmDeleteLogs"
+                                @click="showDeleteDialog = true"
                               >
                                 <v-icon left>mdi-delete</v-icon>
                                 Delete Logs
@@ -160,6 +160,27 @@
           </v-tabs-items>
         </v-container>
       </v-main>
+
+      <!-- Delete Confirmation Dialog -->
+      <v-dialog v-model="showDeleteDialog" max-width="400">
+        <v-card>
+          <v-card-title class="headline">Warning</v-card-title>
+          <v-card-text>Are you sure you want to delete all logs? This action cannot be undone.</v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn color="primary" text @click="showDeleteDialog = false">Cancel</v-btn>
+            <v-btn color="error" text @click="deleteLogsConfirmed">Delete</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
+      <!-- Snackbar for notifications -->
+      <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="3000">
+        {{ snackbar.text }}
+        <template v-slot:action="{ attrs }">
+          <v-btn text v-bind="attrs" @click="snackbar.show = false">Close</v-btn>
+        </template>
+      </v-snackbar>
     </v-app>
   </div>
   
@@ -195,7 +216,13 @@
         ],
         chart: null,
         measurements: [],
-        refreshTimer: null
+        refreshTimer: null,
+        showDeleteDialog: false,
+        snackbar: {
+          show: false,
+          color: 'success',
+          text: ''
+        }
       },
       methods: {
         fetchSerialInfo() {
@@ -260,71 +287,88 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: { duration: 0 },
-                tooltips: {
-                  mode: 'index',
-                  intersect: false,
-                  backgroundColor: 'rgba(50, 50, 50, 0.9)',
-                  titleFontFamily: 'Roboto',
-                  bodyFontFamily: 'Roboto'
+                plugins: {
+                  tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(50, 50, 50, 0.9)',
+                    titleFont: {
+                      family: 'Roboto'
+                    },
+                    bodyFont: {
+                      family: 'Roboto'
+                    }
+                  },
+                  legend: {
+                    labels: {
+                      font: {
+                        family: 'Roboto'
+                      },
+                      color: '#FFFFFF'
+                    }
+                  }
                 },
                 hover: {
                   mode: 'nearest',
                   intersect: true
                 },
-                legend: {
-                  labels: {
-                    fontFamily: 'Roboto',
-                    fontColor: '#FFFFFF'
-                  }
-                },
                 scales: {
-                  xAxes: [{
+                  x: {
                     display: true,
-                    gridLines: {
+                    grid: {
                       color: 'rgba(255, 255, 255, 0.1)'
                     },
-                    scaleLabel: {
+                    title: {
                       display: true,
-                      labelString: 'Time',
-                      fontColor: '#FFFFFF'
+                      text: 'Time',
+                      color: '#FFFFFF',
+                      font: {
+                        family: 'Roboto'
+                      }
                     },
                     ticks: {
-                      fontColor: '#FFFFFF'
+                      color: '#FFFFFF'
                     }
-                  }],
-                  yAxes: [
-                    {
-                      id: 'y-do',
-                      position: 'left',
-                      gridLines: {
-                        color: 'rgba(255, 255, 255, 0.1)'
-                      },
-                      scaleLabel: {
-                        display: true,
-                        labelString: 'Oxygen (mg/l)',
-                        fontColor: '#FFFFFF'
-                      },
-                      ticks: {
-                        fontColor: '#FFFFFF'
+                  },
+                  'y-do': {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    grid: {
+                      color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    title: {
+                      display: true,
+                      text: 'Oxygen (mg/l)',
+                      color: '#FFFFFF',
+                      font: {
+                        family: 'Roboto'
                       }
                     },
-                    {
-                      id: 'y-temp',
-                      position: 'right',
-                      gridLines: { 
-                        drawOnChartArea: false,
-                        color: 'rgba(255, 255, 255, 0.1)'
-                      },
-                      scaleLabel: {
-                        display: true,
-                        labelString: 'Temperature (°C)',
-                        fontColor: '#FFFFFF'
-                      },
-                      ticks: {
-                        fontColor: '#FFFFFF'
-                      }
+                    ticks: {
+                      color: '#FFFFFF'
                     }
-                  ]
+                  },
+                  'y-temp': {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    grid: {
+                      drawOnChartArea: false,
+                      color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    title: {
+                      display: true,
+                      text: 'Temperature (°C)',
+                      color: '#FFFFFF',
+                      font: {
+                        family: 'Roboto'
+                      }
+                    },
+                    ticks: {
+                      color: '#FFFFFF'
+                    }
+                  }
                 }
               }
             });
@@ -349,28 +393,22 @@
         downloadLogs() {
           window.location.href = '/api/logs';
         },
-        confirmDeleteLogs() {
-          this.$vuetify.dialog.confirm({
-            title: 'Warning',
-            text: 'Are you sure you want to delete all logs? This action cannot be undone.',
-            persistant: true,
-            color: 'error'
-          }).then(res => {
-            if (res) this.deleteLogs();
-          });
+        deleteLogsConfirmed() {
+          this.deleteLogs();
+          this.showDeleteDialog = false;
         },
         deleteLogs() {
           axios.post('/api/logs/delete')
             .then(response => {
               if (response.data.success) {
-                this.$vuetify.snackbar.success = 'Logs deleted successfully';
+                this.snackbar = { show: true, color: 'success', text: 'Logs deleted successfully' };
               } else {
-                this.$vuetify.snackbar.error = 'Error deleting logs: ' + response.data.message;
+                this.snackbar = { show: true, color: 'error', text: 'Error deleting logs: ' + response.data.message };
               }
             })
             .catch(error => {
               console.error('Error deleting logs:', error);
-              this.$vuetify.snackbar.error = 'Error deleting logs. Check console for details.';
+              this.snackbar = { show: true, color: 'error', text: 'Error deleting logs. Check console for details.' };
             });
         }
       },
