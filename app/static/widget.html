@@ -2,18 +2,43 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>microDOT Widget</title>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
   <style>
-    body { margin: 0; padding: 0; }
-    #app { width: 100%; height: 100%; }
-    canvas { width: 100% !important; height: 100% !important; }
+    body { 
+      margin: 0; 
+      padding: 0; 
+      font-family: 'Roboto', sans-serif;
+      background-color: #1E1E1E;
+      color: #FFFFFF;
+    }
+    #app { 
+      width: 100%; 
+      height: 100vh; 
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .chart-container {
+      width: 100%;
+      height: 100%;
+      padding: 10px;
+      position: relative;
+    }
+    canvas { 
+      width: 100% !important; 
+      height: 100% !important; 
+    }
   </style>
 </head>
 <body>
   <div id="app">
-    <canvas id="widgetChart"></canvas>
+    <div class="chart-container">
+      <canvas id="widgetChart" ref="chartCanvas"></canvas>
+    </div>
   </div>
   
   <script>
@@ -21,103 +46,226 @@
       el: '#app',
       data: {
         chart: null,
-        refreshTimer: null
+        refreshTimer: null,
+        measurements: []
       },
       methods: {
         fetchData() {
-          axios.get('/api/data?duration=5').then(response => {
-            this.updateChart(response.data);
+          // Store existing measurements to avoid flickering during updates
+          const previousMeasurements = [...this.measurements];
+          
+          // Get data for the last 5 minutes
+          axios.get('/api/data?duration=5&max_points=500').then(response => {
+            const newData = response.data || [];
+            // Only update if we got new data
+            if (newData.length > 0) {
+              this.measurements = newData;
+              this.updateChart(previousMeasurements);
+            }
           }).catch(error => {
             console.error("Error fetching sensor data:", error);
+            // Don't clear data on error
           });
         },
-        updateChart(measurements) {
-          const labels = measurements.map(m => new Date(m.timestamp).toLocaleTimeString());
-          const temperatureData = measurements.map(m => m.temperature);
-          const doData = measurements.map(m => m.do);
+        updateChart(previousMeasurements = []) {
+          // Validate measurements to ensure it's an array
+          if (!Array.isArray(this.measurements)) {
+            console.error("Invalid measurements data:", this.measurements);
+            this.measurements = [];
+          }
+          
+          // Create safe labels and data with fallbacks for missing values
+          const labels = this.measurements.map(m => {
+            try {
+              return m && m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : '';
+            } catch (e) {
+              return '';
+            }
+          });
+          
+          const temperatureData = this.measurements.map(m => 
+            m && typeof m.temperature === 'number' ? m.temperature : null
+          );
+          
+          const doData = this.measurements.map(m => 
+            m && typeof m.do === 'number' ? m.do : null
+          );
           
           if (!this.chart) {
-            const ctx = document.getElementById('widgetChart').getContext('2d');
-            this.chart = new Chart(ctx, {
-              type: 'line',
-              data: {
-                labels: labels,
-                datasets: [
-                  {
-                    label: 'DO mg/l',
-                    data: doData,
-                    borderColor: 'blue',
-                    fill: false,
-                    yAxisID: 'y-do'
-                  },
-                  {
-                    label: 'Temp °C',
-                    data: temperatureData,
-                    borderColor: 'red',
-                    fill: false,
-                    yAxisID: 'y-temp'
-                  }
-                ]
-              },
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 0 },
-                legend: {
-                  position: 'bottom',
-                  labels: {
-                    boxWidth: 12,
-                    padding: 4
-                  }
-                },
-                scales: {
-                  xAxes: [{
-                    display: true,
-                    ticks: {
-                      maxTicksLimit: 5,
-                      maxRotation: 0
-                    }
-                  }],
-                  yAxes: [
+            const ctx = document.getElementById('widgetChart');
+            
+            if (!ctx) {
+              console.error("Chart canvas element not found!");
+              return;
+            }
+            
+            const context2d = ctx.getContext('2d');
+            
+            if (!context2d) {
+              console.error("Failed to get 2D context from canvas!");
+              return;
+            }
+            
+            try {
+              this.chart = new Chart(context2d, {
+                type: 'line',
+                data: {
+                  labels: labels,
+                  datasets: [
                     {
-                      id: 'y-do',
-                      position: 'left',
-                      ticks: {
-                        maxTicksLimit: 5
-                      },
-                      gridLines: {
-                        drawOnChartArea: true
-                      }
+                      label: 'Oxygen (mg/l)',
+                      data: doData,
+                      borderColor: '#2196F3',
+                      backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                      borderWidth: 2,
+                      pointRadius: 0,
+                      pointHoverRadius: 4,
+                      fill: true,
+                      yAxisID: 'y-do'
                     },
                     {
-                      id: 'y-temp',
-                      position: 'right',
-                      ticks: {
-                        maxTicksLimit: 5
-                      },
-                      gridLines: {
-                        drawOnChartArea: false
-                      }
+                      label: 'Temperature (°C)',
+                      data: temperatureData,
+                      borderColor: '#FF5252',
+                      backgroundColor: 'rgba(255, 82, 82, 0.1)',
+                      borderWidth: 2,
+                      pointRadius: 0,
+                      pointHoverRadius: 4,
+                      fill: true,
+                      yAxisID: 'y-temp'
                     }
                   ]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  animation: false,
+                  elements: {
+                    line: {
+                      tension: 0
+                    }
+                  },
+                  tooltips: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(50, 50, 50, 0.9)',
+                    titleFontFamily: 'Roboto',
+                    bodyFontFamily: 'Roboto'
+                  },
+                  hover: {
+                    mode: 'nearest',
+                    intersect: true
+                  },
+                  legend: {
+                    position: 'bottom',
+                    labels: {
+                      fontFamily: 'Roboto',
+                      fontColor: '#FFFFFF',
+                      boxWidth: 12,
+                      padding: 10
+                    }
+                  },
+                  scales: {
+                    xAxes: [{
+                      display: true,
+                      gridLines: {
+                        color: 'rgba(255, 255, 255, 0.1)'
+                      },
+                      ticks: {
+                        maxTicksLimit: 6,
+                        fontColor: '#FFFFFF'
+                      }
+                    }],
+                    yAxes: [
+                      {
+                        id: 'y-do',
+                        position: 'left',
+                        gridLines: {
+                          color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                          maxTicksLimit: 5,
+                          fontColor: '#FFFFFF'
+                        }
+                      },
+                      {
+                        id: 'y-temp',
+                        position: 'right',
+                        gridLines: { 
+                          drawOnChartArea: false,
+                          color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                          maxTicksLimit: 5,
+                          fontColor: '#FFFFFF'
+                        }
+                      }
+                    ]
+                  }
+                }
+              });
+            } catch (e) {
+              console.error("Error initializing chart:", e);
+            }
+          } else {
+            try {
+              // Update data instead of recreating chart
+              this.chart.data.labels = labels;
+              this.chart.data.datasets[0].data = doData;
+              this.chart.data.datasets[1].data = temperatureData;
+              
+              // Use minimal update to avoid redraw
+              this.chart.update(0); // Zero duration to avoid animation
+            } catch (e) {
+              console.error("Error updating chart:", e);
+              // Only destroy and recreate as a last resort
+              if (e.message && e.message.includes('scales')) {
+                try {
+                  this.chart.destroy();
+                  this.chart = null;
+                  // Call updateChart again to recreate the chart
+                  this.$nextTick(() => this.updateChart([]));
+                } catch (destroyError) {
+                  console.error("Error destroying chart:", destroyError);
                 }
               }
-            });
-          } else {
-            this.chart.data.labels = labels;
-            this.chart.data.datasets[0].data = doData;
-            this.chart.data.datasets[1].data = temperatureData;
-            this.chart.update('none');
+            }
+          }
+        },
+        handleResize() {
+          if (this.chart) {
+            try {
+              this.chart.resize();
+              this.chart.update(0);
+            } catch (e) {
+              console.error("Error resizing chart:", e);
+            }
           }
         }
       },
       mounted() {
         this.fetchData();
-        this.refreshTimer = setInterval(this.fetchData, 5000);
+        
+        // Use a more optimized approach for data refreshing
+        this.refreshTimer = setInterval(() => {
+          // Only fetch new data if the tab is visible to save resources
+          if (!document.hidden) {
+            this.fetchData();
+          }
+        }, 5000);
+        
+        // Add window resize listener to handle chart resizing
+        window.addEventListener('resize', this.handleResize);
       },
       beforeDestroy() {
         if (this.refreshTimer) {
           clearInterval(this.refreshTimer);
+        }
+        // Remove resize listener
+        window.removeEventListener('resize', this.handleResize);
+        // Destroy chart if it exists
+        if (this.chart) {
+          this.chart.destroy();
         }
       }
     });

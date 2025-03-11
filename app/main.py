@@ -653,10 +653,11 @@ def delete_logs():
 
 @app.route('/widget')
 def widget():
-    """Serve the widget-optimized version of the dashboard."""
+    """Serve the widget-optimized version of the dashboard for iframe embedding."""
     response = send_from_directory('static', 'widget.html')
-    # Add header to prevent BlueOS from wrapping the page
+    # Add headers to allow iframe embedding
     response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
     return response
 
 if __name__ == '__main__':
