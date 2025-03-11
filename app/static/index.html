@@ -54,7 +54,7 @@
       <v-app-bar app dark dense>
         <div class="logo-container">
           <img src="PMElogo.jpeg" alt="PME Logo" class="logo-img">
-          <h1 class="header-title">PME microDOT</h1>
+          <h1 class="header-title">microDOT</h1>
         </div>
         <v-spacer></v-spacer>
         <v-chip class="info-chip" small>
@@ -146,9 +146,48 @@
                     
                     <v-col cols="12" md="6">
                       <v-card elevation="2">
+                        <v-card-title>Serial Port Settings</v-card-title>
+                        <v-card-text>
+                          <v-row>
+                            <v-col cols="12">
+                              <v-select
+                                v-model="selectedPort"
+                                :items="availablePorts"
+                                label="Serial Port"
+                                :loading="portsLoading"
+                                :disabled="portsLoading"
+                                item-text="name"
+                                item-value="path"
+                                outlined
+                                @change="onPortChange"
+                              >
+                                <template v-slot:append-outer>
+                                  <v-btn 
+                                    icon 
+                                    small
+                                    class="ml-1"
+                                    @click="refreshPorts"
+                                    :disabled="portsLoading"
+                                  >
+                                    <v-icon small>mdi-refresh</v-icon>
+                                  </v-btn>
+                                </template>
+                              </v-select>
+                              <div class="mt-2 caption">
+                                <v-icon small color="info">mdi-information</v-icon>
+                                Changing ports will reconnect the sensor data stream
+                              </div>
+                            </v-col>
+                          </v-row>
+                        </v-card-text>
+                      </v-card>
+                    </v-col>
+                    
+                    <v-col cols="12" md="6">
+                      <v-card elevation="2">
                         <v-card-title>About</v-card-title>
                         <v-card-text>
-                          <p>PME microDOT is a dashboard for monitoring dissolved oxygen and temperature data from PME sensors.</p>
+                          <p>microDOT is a dashboard for monitoring dissolved oxygen and temperature data from the PME sensor.</p>
                           <p class="mb-0"><strong>Version:</strong> 1.0.0</p>
                         </v-card-text>
                       </v-card>
@@ -222,7 +261,11 @@
           show: false,
           color: 'success',
           text: ''
-        }
+        },
+        // Serial port selection
+        selectedPort: '',
+        availablePorts: [],
+        portsLoading: false
       },
       methods: {
         handleResize() {
@@ -239,6 +282,8 @@
           axios.get('/api/serial').then(response => {
             const info = response.data;
             this.serialPortInfo = `${info.serial_port} @ ${info.baud_rate} baud`;
+            // Set the selectedPort to match the current port
+            this.selectedPort = info.serial_port;
           }).catch(error => {
             console.error("Error fetching serial info:", error);
           });
@@ -487,9 +532,76 @@
               console.error('Error deleting logs:', error);
               this.snackbar = { show: true, color: 'error', text: 'Error deleting logs. Check console for details.' };
             });
+        },
+        // Serial port methods
+        refreshPorts() {
+          this.portsLoading = true;
+          axios.get('/api/serial/ports')
+            .then(response => {
+              if (response.data && Array.isArray(response.data.ports)) {
+                this.availablePorts = response.data.ports;
+                // If we haven't selected a port yet, and we have ports, select the first one
+                if (!this.selectedPort && this.availablePorts.length > 0) {
+                  this.selectedPort = this.availablePorts[0].path;
+                }
+              } else {
+                console.error("Invalid port data format:", response.data);
+                this.availablePorts = [];
+              }
+              this.portsLoading = false;
+            })
+            .catch(error => {
+              console.error("Error fetching available ports:", error);
+              this.snackbar = { 
+                show: true, 
+                color: 'error', 
+                text: 'Error fetching available COM ports' 
+              };
+              this.portsLoading = false;
+              this.availablePorts = [];
+            });
+        },
+        
+        onPortChange(port) {
+          if (!port) return;
+          
+          this.portsLoading = true;
+          axios.post('/api/serial/select', { port: port })
+            .then(response => {
+              if (response.data && response.data.success) {
+                this.snackbar = { 
+                  show: true, 
+                  color: 'success', 
+                  text: `Port switched to ${port}` 
+                };
+                // Refresh sensor info to show the new port
+                this.fetchSerialInfo();
+                // Refresh data with the new connection
+                this.fetchData();
+              } else {
+                this.snackbar = { 
+                  show: true, 
+                  color: 'error', 
+                  text: response.data.message || 'Error switching port' 
+                };
+              }
+              this.portsLoading = false;
+            })
+            .catch(error => {
+              console.error("Error switching port:", error);
+              this.snackbar = { 
+                show: true, 
+                color: 'error', 
+                text: 'Error switching to the selected port' 
+              };
+              this.portsLoading = false;
+            });
         }
       },
       mounted() {
+        // Fetch available serial ports on startup
+        this.refreshPorts();
+        
         this.fetchSerialInfo();
         this.fetchData();
         this.startRefreshTimer();

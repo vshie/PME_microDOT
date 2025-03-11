@@ -42,7 +42,12 @@ LABEL permissions='\
   "HostConfig": {\
     "Binds": [\
       "/usr/blueos/extensions/dosensor:/app/logs",\
-      "/dev/ttyUSB0:/dev/ttyUSB0"\
+      "/dev/ttyUSB0:/dev/ttyUSB0",\
+      "/dev/ttyUSB1:/dev/ttyUSB1",\
+      "/dev/ttyUSB2:/dev/ttyUSB2",\
+      "/dev/ttyUSB3:/dev/ttyUSB3",\
+      "/dev/ttyACM0:/dev/ttyACM0",\
+      "/dev/ttyACM1:/dev/ttyACM1"\
     ],\
     "ExtraHosts": ["host.docker.internal:host-gateway"],\
     "PortBindings": {\

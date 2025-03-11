@@ -3,11 +3,14 @@ import threading
 import time
 from datetime import datetime, timedelta
 import serial
+import serial.tools.list_ports
 from flask import Flask, jsonify, send_from_directory, Response, request, send_file
 import os
 import csv
+import json
 from pathlib import Path
 import requests
+import glob
 
 app = Flask(__name__)
 
@@ -15,10 +18,16 @@ app = Flask(__name__)
 # Each measurement is a dict: {timestamp, temperature, do, q}
 data = []
 DATA_LOCK = threading.Lock()
+SERIAL_LOCK = threading.Lock()
 
 # Serial port configuration
-SERIAL_PORT = "/dev/ttyUSB0"
+DEFAULT_SERIAL_PORT = "/dev/ttyUSB0"
 BAUD_RATE = 9600
+SERIAL_PORT = DEFAULT_SERIAL_PORT  # Will be updated from config file if available
+SERIAL_CONFIG_FILE = "/app/logs/serial_config.json"
+
+# Global serial connection
+serial_connection = None
 
 # IMPORTANT: In Docker with a volume mount from host to /app/logs,
 # we should ALWAYS use the /app/logs path directly, as this is what's
@@ -49,6 +58,83 @@ try:
             print(f"  - {item} (file)")
 except Exception as e:
     print(f"Error listing /app directory: {e}")
+
+# Load serial port configuration if exists
+def load_serial_config():
+    global SERIAL_PORT
+    try:
+        if os.path.exists(SERIAL_CONFIG_FILE):
+            with open(SERIAL_CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                saved_port = config.get('port')
+                if saved_port and os.path.exists(saved_port):
+                    SERIAL_PORT = saved_port
+                    print(f"Loaded serial port from config: {SERIAL_PORT}")
+                else:
+                    print(f"Saved port {saved_port} not available, using default: {DEFAULT_SERIAL_PORT}")
+    except Exception as e:
+        print(f"Error loading serial config: {e}")
+
+# Save serial port configuration
+def save_serial_config(port):
+    try:
+        with open(SERIAL_CONFIG_FILE, 'w') as f:
+            json.dump({'port': port}, f)
+        print(f"Saved serial port configuration: {port}")
+        return True
+    except Exception as e:
+        print(f"Error saving serial config: {e}")
+        return False
+
+# Find available serial ports
+def find_serial_ports():
+    ports = []
+    
+    # Look for USB and ACM devices in /dev
+    for pattern in ['/dev/ttyUSB*', '/dev/ttyACM*']:
+        for device in glob.glob(pattern):
+            # Get some basic info about the device
+            try:
+                ports.append({
+                    'path': device,
+                    'name': f"{os.path.basename(device)}"
+                })
+            except Exception as e:
+                print(f"Error getting info for device {device}: {e}")
+    
+    # Sort ports by path
+    ports.sort(key=lambda x: x['path'])
+    
+    return ports
+
+# Initialize or reopen serial connection
+def initialize_serial_connection():
+    global serial_connection
+    
+    # Close existing connection if open
+    if serial_connection and serial_connection.is_open:
+        try:
+            serial_connection.close()
+            print(f"Closed existing serial connection")
+        except Exception as e:
+            print(f"Error closing existing serial connection: {e}")
+    
+    # Open new connection
+    try:
+        serial_connection = serial.Serial(
+            port=SERIAL_PORT,
+            baudrate=BAUD_RATE,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=1
+        )
+        print(f"Serial port {SERIAL_PORT} opened successfully.")
+        return True
+    except serial.SerialException as e:
+        print(f"Error opening serial port {SERIAL_PORT}: {e}")
+        serial_connection = None
+        return False
 
 def clean_response(response):
     """Clean and validate the sensor response string."""
@@ -195,117 +281,120 @@ def send_to_mavlink(name, value):
 
 def read_sensor_loop():
     """Continuously poll the sensor every 5 seconds and update the global data."""
-    global data
-    try:
-        ser = serial.Serial(
-            port=SERIAL_PORT,
-            baudrate=BAUD_RATE,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=1
-        )
-    except serial.SerialException as e:
-        print(f"Error opening serial port: {e}")
-        return
-
-    print("Serial port opened successfully.")
+    global data, serial_connection
+    
+    # Load saved serial port config
+    load_serial_config()
+    
+    # Initialize serial connection
+    if not initialize_serial_connection():
+        print("Failed to initialize serial connection. Will retry periodically.")
     
     while True:
-        start_time = time.time()
-        
-        # Clear any pending data in the buffer
-        ser.reset_input_buffer()
-        
-        # Send the command
-        try:
-            ser.write("MDOT\r\n".encode('utf-8'))
-        except Exception as e:
-            print("Error writing to serial port:", e)
-            time.sleep(5)
-            continue
-        
-        # Allow sensor time to reply - increase this a bit for more reliable readings
-        time.sleep(1.0)  # Increased from 0.5 to 1.0 seconds
-        
-        try:
-            # Try reading data multiple times if necessary
-            max_read_attempts = 3
-            read_attempt = 0
-            raw_response = ""
+        # Ensure serial connection is open
+        with SERIAL_LOCK:
+            if not serial_connection or not serial_connection.is_open:
+                if not initialize_serial_connection():
+                    print("Still unable to open serial connection. Retrying in 10 seconds...")
+                    time.sleep(10)
+                    continue
             
-            while read_attempt < max_read_attempts:
-                read_attempt += 1
-                
-                # Read what's available
-                bytes_waiting = ser.in_waiting
-                if bytes_waiting > 0:
-                    raw_response += ser.read(bytes_waiting).decode('utf-8', errors='replace')
-                else:
-                    # If no data available and not first attempt, wait a bit more
-                    if read_attempt > 1:
-                        print(f"No data in serial buffer (attempt {read_attempt}/{max_read_attempts})")
-                    time.sleep(0.5)
-                
-                # Check if we have what looks like a valid response
-                if ',' in raw_response and len(raw_response.strip()) > 5:
-                    break
+            start_time = time.time()
             
-            # Debug raw response to help diagnose issues
-            print(f"Raw response ({len(raw_response)} bytes): {raw_response.strip()}")
+            # Clear any pending data in the buffer
+            serial_connection.reset_input_buffer()
             
-            cleaned_response = clean_response(raw_response)
-            if not cleaned_response:
-                print("Invalid or empty response received, skipping.")
+            # Send the command
+            try:
+                serial_connection.write("MDOT\r\n".encode('utf-8'))
+            except Exception as e:
+                print("Error writing to serial port:", e)
+                # Try to reinitialize the connection
+                initialize_serial_connection()
+                time.sleep(5)
                 continue
             
-            print(f"Cleaned response: {cleaned_response}")
+            # Allow sensor time to reply - increase this a bit for more reliable readings
+            time.sleep(1.0)
+            
+            try:
+                # Try reading data multiple times if necessary
+                max_read_attempts = 3
+                read_attempt = 0
+                raw_response = ""
                 
-            parts = [p.strip() for p in cleaned_response.split(',')]
-            if len(parts) >= 5:
-                try:
-                    temperature = float(parts[2])
-                    do = float(parts[3])
-                    q = float(parts[4])
+                while read_attempt < max_read_attempts:
+                    read_attempt += 1
                     
-                    measurement = {
-                        "timestamp": datetime.now().isoformat(),
-                        "temperature": temperature,
-                        "do": do,
-                        "q": q
-                    }
+                    # Read what's available
+                    bytes_waiting = serial_connection.in_waiting
+                    if bytes_waiting > 0:
+                        raw_response += serial_connection.read(bytes_waiting).decode('utf-8', errors='replace')
+                    else:
+                        # If no data available and not first attempt, wait a bit more
+                        if read_attempt > 1:
+                            print(f"No data in serial buffer (attempt {read_attempt}/{max_read_attempts})")
+                        time.sleep(0.5)
                     
-                    with DATA_LOCK:
-                        # Only append if values are reasonable
-                        if -10 <= temperature <= 50 and 0 <= do <= 20 and 0 <= q <= 1:
-                            data.append(measurement)
-                            if len(data) > 60:
-                                data = data[-60:]
-                            print("Stored measurement:", measurement)
-                            write_to_csv(measurement)
-                            
-                            # Send values to Mavlink2Rest with sensor names matching BlueRobotics convention
-                            # The exact sensor name is critical for proper logging in BlueOS
-                            send_success = send_to_mavlink("DO_T", temperature)  # DO_T for DO Temperature
-                            if send_success:
-                                # Only try sending the next value if the first one succeeded
-                                send_to_mavlink("DO_O", do)  # DO_O for Dissolved Oxygen
-                        else:
-                            print("Measurement values out of expected range, skipping")
-                except (ValueError, IndexError) as e:
-                    print(f"Error parsing values from response: {e}")
-                    print(f"Parts: {parts}")
+                    # Check if we have what looks like a valid response
+                    if ',' in raw_response and len(raw_response.strip()) > 5:
+                        break
+            
+                # Debug raw response to help diagnose issues
+                print(f"Raw response ({len(raw_response)} bytes): {raw_response.strip()}")
+                
+                cleaned_response = clean_response(raw_response)
+                if not cleaned_response:
+                    print("Invalid or empty response received, skipping.")
                     continue
-            else:
-                print("Invalid response format")
                 
-        except Exception as e:  
-            print("Error processing measurement:", e)
-        
-        # Calculate remaining time in the 5-second cycle
-        elapsed = time.time() - start_time
-        sleep_time = max(0, 5 - elapsed)
-        time.sleep(sleep_time)
+                print(f"Cleaned response: {cleaned_response}")
+                
+                parts = [p.strip() for p in cleaned_response.split(',')]
+                if len(parts) >= 5:
+                    try:
+                        temperature = float(parts[2])
+                        do = float(parts[3])
+                        q = float(parts[4])
+                        
+                        measurement = {
+                            "timestamp": datetime.now().isoformat(),
+                            "temperature": temperature,
+                            "do": do,
+                            "q": q
+                        }
+                        
+                        with DATA_LOCK:
+                            # Only append if values are reasonable
+                            if -10 <= temperature <= 50 and 0 <= do <= 20 and 0 <= q <= 1:
+                                data.append(measurement)
+                                if len(data) > 60:
+                                    data = data[-60:]
+                                print("Stored measurement:", measurement)
+                                write_to_csv(measurement)
+                                
+                                # Send values to Mavlink2Rest with sensor names matching BlueRobotics convention
+                                # The exact sensor name is critical for proper logging in BlueOS
+                                send_success = send_to_mavlink("DO_T", temperature)  # DO_T for DO Temperature
+                                if send_success:
+                                    # Only try sending the next value if the first one succeeded
+                                    send_to_mavlink("DO_O", do)  # DO_O for Dissolved Oxygen
+                            else:
+                                print("Measurement values out of expected range, skipping")
+                    except (ValueError, IndexError) as e:
+                        print(f"Error parsing values from response: {e}")
+                        print(f"Parts: {parts}")
+                        continue
+                else:
+                    print("Invalid response format")
+                
+            except Exception as e:  
+                print("Error processing measurement:", e)
+            
+            # Calculate remaining time in the 5-second cycle
+            elapsed = time.time() - start_time
+            sleep_time = max(0, 5 - elapsed)
+            time.sleep(sleep_time)
 
 # Start the sensor polling thread (daemonized so it stops with the main app)
 sensor_thread = threading.Thread(target=read_sensor_loop, daemon=True)
@@ -429,6 +518,55 @@ def get_data():
 def get_serial():
     """Return the serial port configuration."""
     return jsonify({"serial_port": SERIAL_PORT, "baud_rate": BAUD_RATE})
+
+@app.route('/api/serial/ports')
+def get_serial_ports():
+    """List available serial ports."""
+    ports = find_serial_ports()
+    return jsonify({"ports": ports})
+
+@app.route('/api/serial/select', methods=['POST'])
+def select_serial_port():
+    """Select a different serial port."""
+    global SERIAL_PORT
+    
+    # Get the port from request
+    data = request.json
+    if not data or 'port' not in data:
+        return jsonify({"success": False, "message": "No port specified"}), 400
+    
+    new_port = data['port']
+    
+    # Validate the port exists
+    if not os.path.exists(new_port):
+        return jsonify({"success": False, "message": f"Port {new_port} does not exist"}), 400
+    
+    # Update the port
+    with SERIAL_LOCK:
+        old_port = SERIAL_PORT
+        SERIAL_PORT = new_port
+        
+        # Try to reinitialize the connection
+        if initialize_serial_connection():
+            # Save the configuration
+            if save_serial_config(new_port):
+                return jsonify({
+                    "success": True, 
+                    "message": f"Switched from {old_port} to {new_port}"
+                })
+            else:
+                return jsonify({
+                    "success": True, 
+                    "message": f"Switched to {new_port} but failed to save configuration"
+                })
+        else:
+            # Revert to old port if new one fails
+            SERIAL_PORT = old_port
+            initialize_serial_connection()  # Try to reopen the old port
+            return jsonify({
+                "success": False, 
+                "message": f"Failed to connect to {new_port}, reverted to {old_port}"
+            }), 500
 
 @app.route('/register_service')
 def register_service():
