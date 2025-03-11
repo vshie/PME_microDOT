@@ -250,17 +250,22 @@
             ? `/api/data?max_points=${maxPoints}` 
             : `/api/data?duration=${this.selectedDuration}&max_points=${maxPoints}`;
 
+          // Store existing measurements to avoid flickering during updates
+          const previousMeasurements = [...this.measurements];
+
           axios.get(url).then(response => {
-            this.measurements = response.data || [];
-            this.updateChart();
+            const newData = response.data || [];
+            // Only update if we got new data
+            if (newData.length > 0) {
+              this.measurements = newData;
+              this.updateChart(previousMeasurements);
+            }
           }).catch(error => {
             console.error("Error fetching sensor data:", error);
-            // Set empty data if there's an error
-            this.measurements = [];
-            this.updateChart();
+            // Don't clear data on error
           });
         },
-        updateChart() {
+        updateChart(previousMeasurements = []) {
           // Validate measurements to ensure it's an array
           if (!Array.isArray(this.measurements)) {
             console.error("Invalid measurements data:", this.measurements);
@@ -284,13 +289,15 @@
             m && typeof m.do === 'number' ? m.do : null
           );
           
-          // Debug output
-          console.log("Chart data prepared:", {
-            dataPoints: this.measurements.length,
-            labels: labels.length,
-            temperatureData: temperatureData.length,
-            doData: doData.length
-          });
+          // Only output debug info if measurements actually changed
+          if (this.measurements.length !== previousMeasurements.length) {
+            console.log("Chart data prepared:", {
+              dataPoints: this.measurements.length,
+              labels: labels.length,
+              temperatureData: temperatureData.length,
+              doData: doData.length
+            });
+          }
           
           if (!this.chart) {
             const ctx = document.getElementById('myChart');
@@ -340,7 +347,12 @@
                 options: {
                   responsive: true,
                   maintainAspectRatio: false,
-                  animation: { duration: 0 },
+                  animation: false,
+                  elements: {
+                    line: {
+                      tension: 0
+                    }
+                  },
                   tooltips: {
                     mode: 'index',
                     intersect: false,
@@ -414,33 +426,45 @@
             }
           } else {
             try {
+              // Update data instead of recreating chart
+              // This approach prevents chart flickering
               this.chart.data.labels = labels;
               this.chart.data.datasets[0].data = doData;
               this.chart.data.datasets[1].data = temperatureData;
-              this.chart.update('none');
+              
+              // Use minimal update to avoid redraw
+              this.chart.update(0); // Zero duration to avoid animation
             } catch (e) {
               console.error("Error updating chart:", e);
-              // If the update fails, try to destroy and recreate the chart
-              try {
-                this.chart.destroy();
-                this.chart = null;
-                // Call updateChart again to recreate the chart
-                this.$nextTick(() => this.updateChart());
-              } catch (destroyError) {
-                console.error("Error destroying chart:", destroyError);
+              // Only destroy and recreate as a last resort
+              if (e.message && e.message.includes('scales')) {
+                try {
+                  this.chart.destroy();
+                  this.chart = null;
+                  // Call updateChart again to recreate the chart
+                  this.$nextTick(() => this.updateChart([]));
+                } catch (destroyError) {
+                  console.error("Error destroying chart:", destroyError);
+                }
               }
             }
           }
         },
         onDurationChange() {
+          // We don't need to clear the chart, just show a loading indicator
           this.fetchData();
         },
         startRefreshTimer() {
           if (this.refreshTimer) {
             clearInterval(this.refreshTimer);
           }
+          
+          // Use a more optimized approach for data refreshing
           this.refreshTimer = setInterval(() => {
-            this.fetchData();
+            // Only fetch new data if the tab is visible to save resources
+            if (!document.hidden) {
+              this.fetchData();
+            }
           }, 5000);
         },
         downloadLogs() {
