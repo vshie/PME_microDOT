@@ -570,7 +570,10 @@ def get_data():
                                         'timestamp': row['timestamp'],
                                         'temperature': float(row['temperature']),
                                         'do': float(row['do']),
-                                        'q': float(row['q'])
+                                        'q': float(row['q']),
+                                        'vehicle_temperature': float(row['vehicle_temperature']) if row['vehicle_temperature'] else None,
+                                        'latitude': float(row['latitude']) if row['latitude'] else None,
+                                        'longitude': float(row['longitude']) if row['longitude'] else None
                                     }
                                     all_matching_rows.append(processed_row)
                             else:
