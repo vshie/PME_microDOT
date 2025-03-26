@@ -279,6 +279,30 @@ def send_to_mavlink(name, value):
     print(f"Could not send {name}={value} to any Mavlink2Rest endpoint")
     return False
 
+def get_vehicle_temperature():
+    """Fetch vehicle water temperature from Mavlink2Rest SCALED_PRESSURE2 message."""
+    endpoints = [
+        'http://host.docker.internal:6040/v1/mavlink/vehicles/1/components/1/messages/SCALED_PRESSURE2',
+        'http://localhost:6040/v1/mavlink/vehicles/1/components/1/messages/SCALED_PRESSURE2',
+        'http://127.0.0.1:6040/v1/mavlink/vehicles/1/components/1/messages/SCALED_PRESSURE2',
+        'http://192.168.2.2:6040/v1/mavlink/vehicles/1/components/1/messages/SCALED_PRESSURE2',
+        'http://blueos.local:6040/v1/mavlink/vehicles/1/components/1/messages/SCALED_PRESSURE2'
+    ]
+    
+    for endpoint in endpoints:
+        try:
+            response = requests.get(endpoint, timeout=2.0)
+            if response.status_code == 200:
+                data = response.json()
+                if 'message' in data and 'temperature' in data['message']:
+                    # Convert temperature from centidegree Celsius to Celsius
+                    temp_c = data['message']['temperature'] / 100.0
+                    return temp_c
+        except Exception:
+            continue
+    
+    return None
+
 def read_sensor_loop():
     """Continuously poll the sensor every 5 seconds and update the global data."""
     global data, serial_connection
@@ -357,11 +381,15 @@ def read_sensor_loop():
                         do = float(parts[3])
                         q = float(parts[4])
                         
+                        # Get vehicle temperature
+                        vehicle_temp = get_vehicle_temperature()
+                        
                         measurement = {
                             "timestamp": datetime.now().isoformat(),
                             "temperature": temperature,
                             "do": do,
-                            "q": q
+                            "q": q,
+                            "vehicle_temperature": vehicle_temp
                         }
                         
                         with DATA_LOCK:

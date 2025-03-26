@@ -386,6 +386,17 @@
                       pointHoverRadius: 4,
                       fill: true,
                       yAxisID: 'y-temp'
+                    },
+                    {
+                      label: 'Vehicle Temperature (°C)',
+                      data: this.measurements.map(m => m && typeof m.vehicle_temperature === 'number' ? m.vehicle_temperature : null),
+                      borderColor: '#4CAF50',
+                      backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                      borderWidth: 2,
+                      pointRadius: 0,
+                      pointHoverRadius: 4,
+                      fill: true,
+                      yAxisID: 'y-temp'
                     }
                   ]
                 },
@@ -476,6 +487,7 @@
               this.chart.data.labels = labels;
               this.chart.data.datasets[0].data = doData;
               this.chart.data.datasets[1].data = temperatureData;
+              this.chart.data.datasets[2].data = this.measurements.map(m => m && typeof m.vehicle_temperature === 'number' ? m.vehicle_temperature : null);
               
               // Use minimal update to avoid redraw
               this.chart.update(0); // Zero duration to avoid animation
