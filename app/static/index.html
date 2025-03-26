@@ -291,24 +291,42 @@
         fetchData() {
           const maxPoints = 500; // Maximum number of points to display on chart
           
-          const url = this.selectedDuration === 'all' 
-            ? `/api/data?max_points=${maxPoints}` 
-            : `/api/data?duration=${this.selectedDuration}&max_points=${maxPoints}`;
+          // For short durations (5 minutes or less), use in-memory data
+          if (this.selectedDuration !== 'all' && parseInt(this.selectedDuration) <= 5) {
+            axios.get(`/api/data?duration=${this.selectedDuration}&max_points=${maxPoints}`)
+              .then(response => {
+                const newData = response.data || [];
+                if (newData.length > 0) {
+                  this.measurements = newData;
+                  this.updateChart();
+                }
+              })
+              .catch(error => {
+                console.error("Error fetching sensor data:", error);
+              });
+          } else {
+            // For longer durations or 'all', use CSV data
+            const url = this.selectedDuration === 'all' 
+              ? `/api/data?max_points=${maxPoints}` 
+              : `/api/data?duration=${this.selectedDuration}&max_points=${maxPoints}`;
 
-          // Store existing measurements to avoid flickering during updates
-          const previousMeasurements = [...this.measurements];
-
-          axios.get(url).then(response => {
-            const newData = response.data || [];
-            // Only update if we got new data
-            if (newData.length > 0) {
-              this.measurements = newData;
-              this.updateChart(previousMeasurements);
-            }
-          }).catch(error => {
-            console.error("Error fetching sensor data:", error);
-            // Don't clear data on error
-          });
+            axios.get(url)
+              .then(response => {
+                const newData = response.data || [];
+                if (newData.length > 0) {
+                  this.measurements = newData;
+                  this.updateChart();
+                }
+              })
+              .catch(error => {
+                console.error("Error fetching sensor data:", error);
+                this.snackbar = { 
+                  show: true, 
+                  color: 'error', 
+                  text: 'Error fetching historical data' 
+                };
+              });
+          }
         },
         updateChart(previousMeasurements = []) {
           // Validate measurements to ensure it's an array
