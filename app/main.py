@@ -37,6 +37,48 @@ LOG_FILE = LOG_DIR / "sensor_data.csv"
 CSV_HEADERS = ["timestamp", "temperature", "do", "q", "vehicle_temperature", "latitude", "longitude"]
 MAX_CSV_SIZE_MB = 10  # Limit file size to 10MB before rotation
 
+def ensure_csv_headers():
+    """Check and update CSV headers if needed."""
+    try:
+        if not LOG_FILE.exists():
+            print(f"CSV file does not exist yet, will be created with headers: {CSV_HEADERS}")
+            return True
+            
+        # Read existing headers
+        with open(LOG_FILE, 'r') as f:
+            reader = csv.reader(f)
+            existing_headers = next(reader, [])
+            
+        # Check if all required headers are present
+        missing_headers = [h for h in CSV_HEADERS if h not in existing_headers]
+        
+        if missing_headers:
+            print(f"Found missing headers in CSV: {missing_headers}")
+            
+            # Read all existing data
+            with open(LOG_FILE, 'r') as f:
+                reader = csv.DictReader(f)
+                existing_data = list(reader)
+            
+            # Write back with all headers
+            with open(LOG_FILE, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+                writer.writeheader()
+                
+                # Write existing data, adding None for missing columns
+                for row in existing_data:
+                    for header in missing_headers:
+                        row[header] = None
+                    writer.writerow(row)
+                    
+            print(f"Updated CSV headers to include: {missing_headers}")
+            return True
+            
+        return True
+    except Exception as e:
+        print(f"Error checking/updating CSV headers: {e}")
+        return False
+
 # Create logs directory if it doesn't exist (for safety)
 try:
     os.makedirs(str(LOG_DIR), exist_ok=True)
@@ -44,6 +86,10 @@ try:
     print(f"Log directory exists: {LOG_DIR.exists()}")
     print(f"Log directory is writable: {os.access(str(LOG_DIR), os.W_OK)}")
     print(f"Log file will be stored at: {LOG_FILE}")
+    
+    # Check and update CSV headers if needed
+    if not ensure_csv_headers():
+        print("Warning: Failed to ensure CSV headers are correct")
 except Exception as e:
     print(f"Error creating log directory: {e}")
 
