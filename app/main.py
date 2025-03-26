@@ -34,7 +34,7 @@ serial_connection = None
 # mounted to the host directory.
 LOG_DIR = Path("/app/logs")
 LOG_FILE = LOG_DIR / "sensor_data.csv"
-CSV_HEADERS = ["timestamp", "temperature", "do", "q"]
+CSV_HEADERS = ["timestamp", "temperature", "do", "q", "vehicle_temperature", "latitude", "longitude"]
 MAX_CSV_SIZE_MB = 10  # Limit file size to 10MB before rotation
 
 # Create logs directory if it doesn't exist (for safety)
@@ -303,6 +303,31 @@ def get_vehicle_temperature():
     
     return None
 
+def get_gps_position():
+    """Fetch GPS position from Mavlink2Rest GLOBAL_POSITION_INT message."""
+    endpoints = [
+        'http://host.docker.internal:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT',
+        'http://localhost:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT',
+        'http://127.0.0.1:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT',
+        'http://192.168.2.2:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT',
+        'http://blueos.local:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT'
+    ]
+    
+    for endpoint in endpoints:
+        try:
+            response = requests.get(endpoint, timeout=2.0)
+            if response.status_code == 200:
+                data = response.json()
+                if 'message' in data and 'lat' in data['message'] and 'lon' in data['message']:
+                    # Convert lat/lon from int32 to degrees (divide by 1e7)
+                    lat = data['message']['lat'] / 1e7
+                    lon = data['message']['lon'] / 1e7
+                    return {'lat': lat, 'lon': lon}
+        except Exception:
+            continue
+    
+    return None
+
 def read_sensor_loop():
     """Continuously poll the sensor every 5 seconds and update the global data."""
     global data, serial_connection
@@ -381,15 +406,18 @@ def read_sensor_loop():
                         do = float(parts[3])
                         q = float(parts[4])
                         
-                        # Get vehicle temperature
+                        # Get vehicle temperature and GPS position
                         vehicle_temp = get_vehicle_temperature()
+                        gps_pos = get_gps_position()
                         
                         measurement = {
                             "timestamp": datetime.now().isoformat(),
                             "temperature": temperature,
                             "do": do,
                             "q": q,
-                            "vehicle_temperature": vehicle_temp
+                            "vehicle_temperature": vehicle_temp,
+                            "latitude": gps_pos['lat'] if gps_pos else None,
+                            "longitude": gps_pos['lon'] if gps_pos else None
                         }
                         
                         with DATA_LOCK:
