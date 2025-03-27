@@ -11,6 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@0.7.7"></script>
   <style>
     [v-cloak] { display: none; }
     .logo-container {
@@ -45,6 +46,11 @@
     }
     .info-chip {
       margin: 0 4px;
+    }
+    .chart-controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
     }
   </style>
 </head>
@@ -100,6 +106,16 @@
                         <v-card-text>
                           <div class="chart-container">
                             <canvas id="myChart" ref="chartCanvas"></canvas>
+                          </div>
+                          <div class="chart-controls">
+                            <v-btn small text @click="resetZoom">
+                              <v-icon small left>mdi-refresh</v-icon>
+                              Reset Zoom
+                            </v-btn>
+                            <v-btn small text @click="togglePan">
+                              <v-icon small left>{{ panEnabled ? 'mdi-pan-off' : 'mdi-pan' }}</v-icon>
+                              {{ panEnabled ? 'Disable Pan' : 'Enable Pan' }}
+                            </v-btn>
                           </div>
                         </v-card-text>
                       </v-card>
@@ -265,7 +281,8 @@
         // Serial port selection
         selectedPort: '',
         availablePorts: [],
-        portsLoading: false
+        portsLoading: false,
+        panEnabled: false
       },
       methods: {
         handleResize() {
@@ -492,6 +509,28 @@
                         }
                       }
                     ]
+                  },
+                  plugins: {
+                    zoom: {
+                      pan: {
+                        enabled: true,
+                        mode: 'x',
+                        modifierKey: 'ctrl',
+                        speed: 10
+                      },
+                      zoom: {
+                        enabled: true,
+                        mode: 'x',
+                        speed: 0.1,
+                        sensitivity: 3,
+                        drag: {
+                          enabled: true,
+                          backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                          borderColor: '#2196F3',
+                          borderWidth: 1
+                        }
+                      }
+                    }
                   }
                 }
               });
@@ -626,6 +665,18 @@
               };
               this.portsLoading = false;
             });
+        },
+        resetZoom() {
+          if (this.chart) {
+            this.chart.resetZoom();
+          }
+        },
+        togglePan() {
+          if (this.chart) {
+            this.panEnabled = !this.panEnabled;
+            this.chart.options.plugins.zoom.pan.enabled = this.panEnabled;
+            this.chart.update('none');
+          }
         }
       },
       mounted() {
