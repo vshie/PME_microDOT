@@ -535,24 +535,21 @@
               // Add zoom event handler
               this.chart.options.plugins.zoom.zoom.onZoomComplete = (chart) => {
                 try {
-                  // Get the first dataset's metadata to access scales
-                  const meta = chart.getDatasetMeta(0);
-                  if (!meta || !meta.xScale) {
+                  // Get the x-axis scale
+                  const xAxis = chart.scales['x-axis-0'];
+                  if (!xAxis) {
                     console.error("Could not find x-axis scale");
                     return;
                   }
 
-                  // Get the zoomed range from the xScale
-                  const {min, max} = meta.xScale;
-                  console.log("Zoom range:", { min: new Date(min), max: new Date(max) });
+                  // Get the zoomed range
+                  const {min, max} = xAxis;
                   
                   // Filter measurements within the zoomed range
                   const filteredMeasurements = this.measurements.filter(m => {
                     const timestamp = new Date(m.timestamp).getTime();
                     return timestamp >= min && timestamp <= max;
                   });
-
-                  console.log("Filtered measurements:", filteredMeasurements.length);
 
                   // Update chart data with filtered measurements
                   chart.data.labels = filteredMeasurements.map(m => 
