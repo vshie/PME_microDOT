@@ -39,7 +39,10 @@ LABEL permissions='\
   "ExposedPorts": {\
     "6436/tcp": {}\
   },\
+  
   "HostConfig": {\
+    "CpuPeriod": 100000,
+    "CpuQuota": 100000,
     "Binds": [\
       "/usr/blueos/extensions/dosensor:/app/logs",\
       "/dev/ttyUSB0:/dev/ttyUSB0",\
