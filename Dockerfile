@@ -41,8 +41,8 @@ LABEL permissions='\
   },\
   
   "HostConfig": {\
-    "CpuPeriod": 100000,
-    "CpuQuota": 100000,
+    "CpuPeriod": 100000,\
+    "CpuQuota": 100000,\
     "Binds": [\
       "/usr/blueos/extensions/dosensor:/app/logs",\
       "/dev/ttyUSB0:/dev/ttyUSB0",\
