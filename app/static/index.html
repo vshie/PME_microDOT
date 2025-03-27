@@ -513,21 +513,26 @@
                   plugins: {
                     zoom: {
                       pan: {
-                        enabled: true,
+                        enabled: false,  // Start with pan disabled
                         mode: 'x',
-                        modifierKey: 'ctrl',
                         speed: 10
                       },
                       zoom: {
                         enabled: true,
                         mode: 'x',
-                        speed: 0.1,
-                        sensitivity: 3,
                         drag: {
                           enabled: true,
                           backgroundColor: 'rgba(33, 150, 243, 0.1)',
                           borderColor: '#2196F3',
                           borderWidth: 1
+                        },
+                        pinch: {
+                          enabled: true
+                        },
+                        wheel: {
+                          enabled: true,
+                          modifierKey: 'ctrl',
+                          speed: 0.1
                         }
                       }
                     }
@@ -669,6 +674,11 @@
         resetZoom() {
           if (this.chart) {
             this.chart.resetZoom();
+            this.snackbar = {
+              show: true,
+              color: 'info',
+              text: 'Zoom reset to original view'
+            };
           }
         },
         togglePan() {
@@ -676,6 +686,11 @@
             this.panEnabled = !this.panEnabled;
             this.chart.options.plugins.zoom.pan.enabled = this.panEnabled;
             this.chart.update('none');
+            this.snackbar = {
+              show: true,
+              color: 'info',
+              text: this.panEnabled ? 'Panning enabled - Click and drag to pan' : 'Panning disabled'
+            };
           }
         }
       },
@@ -706,6 +721,9 @@
         }
       }
     });
+
+    // Register the zoom plugin
+    Chart.plugins.register(ChartZoom);
   </script>
 </body>
 </html>
