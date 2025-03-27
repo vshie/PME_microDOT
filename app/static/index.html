@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@0.7.7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <style>
     [v-cloak] { display: none; }
     .logo-container {
@@ -512,11 +512,6 @@
                   },
                   plugins: {
                     zoom: {
-                      pan: {
-                        enabled: false,
-                        mode: 'x',
-                        speed: 10
-                      },
                       zoom: {
                         enabled: true,
                         mode: 'x',
@@ -526,6 +521,11 @@
                           borderColor: '#2196F3',
                           borderWidth: 1
                         }
+                      },
+                      pan: {
+                        enabled: false,
+                        mode: 'x',
+                        speed: 10
                       }
                     }
                   }
@@ -535,15 +535,15 @@
               // Add zoom event handler
               this.chart.options.plugins.zoom.zoom.onZoomComplete = (chart) => {
                 try {
-                  // Get the first dataset's metadata to access scales
-                  const meta = chart.getDatasetMeta(0);
-                  if (!meta || !meta.xScale) {
+                  // Get the x-axis scale
+                  const xAxis = chart.scales['x-axis-0'];
+                  if (!xAxis) {
                     console.error("Could not find x-axis scale");
                     return;
                   }
 
-                  // Get the zoomed range from the xScale
-                  const {min, max} = meta.xScale;
+                  // Get the zoomed range
+                  const {min, max} = xAxis;
                   
                   // Filter measurements within the zoomed range
                   const filteredMeasurements = this.measurements.filter(m => {
