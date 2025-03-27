@@ -535,18 +535,15 @@
               // Add zoom event handler
               this.chart.options.plugins.zoom.zoom.onZoomComplete = (chart) => {
                 try {
-                  // Debug log available scales
-                  console.log("Available scales:", Object.keys(chart.scales));
-                  
-                  // Get the x-axis scale - in Chart.js 2.9.4 it's the first x-axis
-                  const xAxis = chart.scales[Object.keys(chart.scales).find(key => key.startsWith('x'))];
-                  if (!xAxis) {
-                    console.error("Could not find x-axis scale. Available scales:", Object.keys(chart.scales));
+                  // Get the first dataset's metadata to access scales
+                  const meta = chart.getDatasetMeta(0);
+                  if (!meta || !meta.xScale) {
+                    console.error("Could not find x-axis scale");
                     return;
                   }
 
-                  // Get the zoomed range
-                  const {min, max} = xAxis;
+                  // Get the zoomed range from the xScale
+                  const {min, max} = meta.xScale;
                   console.log("Zoom range:", { min: new Date(min), max: new Date(max) });
                   
                   // Filter measurements within the zoomed range
@@ -569,10 +566,6 @@
                   chart.update('none');
                 } catch (error) {
                   console.error("Error in zoom handler:", error);
-                  console.error("Chart state:", {
-                    scales: Object.keys(chart.scales),
-                    data: chart.data
-                  });
                 }
               };
             } catch (e) {
