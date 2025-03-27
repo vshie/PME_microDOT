@@ -513,7 +513,7 @@
                   plugins: {
                     zoom: {
                       pan: {
-                        enabled: false,  // Start with pan disabled
+                        enabled: false,
                         mode: 'x',
                         speed: 10
                       },
@@ -531,20 +531,43 @@
                   }
                 }
               });
+
+              // Add zoom event handler
+              this.chart.options.plugins.zoom.zoom.onZoomComplete = (chart) => {
+                const {min, max} = chart.scales['x-axis-0'];
+                const startTime = new Date(min);
+                const endTime = new Date(max);
+                
+                // Filter measurements to only include those within the zoomed range
+                const filteredMeasurements = this.measurements.filter(m => {
+                  const timestamp = new Date(m.timestamp);
+                  return timestamp >= startTime && timestamp <= endTime;
+                });
+
+                // Update chart data with filtered measurements
+                chart.data.labels = filteredMeasurements.map(m => 
+                  new Date(m.timestamp).toLocaleTimeString()
+                );
+                chart.data.datasets[0].data = filteredMeasurements.map(m => m.do);
+                chart.data.datasets[1].data = filteredMeasurements.map(m => m.temperature);
+                chart.data.datasets[2].data = filteredMeasurements.map(m => m.vehicle_temperature);
+                chart.update('none');
+              };
             } catch (e) {
               console.error("Error initializing chart:", e);
             }
           } else {
             try {
               // Update data instead of recreating chart
-              // This approach prevents chart flickering
               this.chart.data.labels = labels;
               this.chart.data.datasets[0].data = doData;
               this.chart.data.datasets[1].data = temperatureData;
-              this.chart.data.datasets[2].data = this.measurements.map(m => m && typeof m.vehicle_temperature === 'number' ? m.vehicle_temperature : null);
+              this.chart.data.datasets[2].data = this.measurements.map(m => 
+                m && typeof m.vehicle_temperature === 'number' ? m.vehicle_temperature : null
+              );
               
               // Use minimal update to avoid redraw
-              this.chart.update(0); // Zero duration to avoid animation
+              this.chart.update(0);
             } catch (e) {
               console.error("Error updating chart:", e);
               // Only destroy and recreate as a last resort
