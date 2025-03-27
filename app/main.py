@@ -520,104 +520,83 @@ def get_data():
     
     print(f"Data request: duration={duration}, all_data={all_data_requested}, max_points={max_points}")
     
-    # Always return in-memory data for short durations (5 minutes or less)
-    if duration <= 5 and not all_data_requested:
-        with DATA_LOCK:
-            filtered_data = [
-                measurement for measurement in data
-                if all_data_requested or datetime.fromisoformat(measurement['timestamp']) > cutoff_time
-            ]
-            print(f"Returning {len(filtered_data)} in-memory records (short duration)")
-            return jsonify(filtered_data)
-    else:
-        # For longer durations or all data, try to read from CSV
-        log_file_path = str(LOG_FILE)
+    # Always use CSV data for consistency
+    log_file_path = str(LOG_FILE)
+    
+    # First check if the file exists
+    if not os.path.exists(log_file_path):
+        print(f"Log file not found: {log_file_path}")
+        return jsonify([])
+    
+    # Try to read data from the CSV file
+    try:
+        filtered_data = []
+        row_count = 0
+        error_count = 0
         
-        # First check if the file exists
-        if not os.path.exists(log_file_path):
-            print(f"Log file not found: {log_file_path}, falling back to in-memory data")
-            with DATA_LOCK:
-                return jsonify(list(data))
-        
-        # Try to read from the CSV file
-        try:
-            filtered_data = []
-            row_count = 0
-            error_count = 0
-            
-            with open(log_file_path, 'r') as csvfile:
-                try:
-                    reader = csv.DictReader(csvfile)
-                    
-                    # Verify the headers are correct
-                    if not all(header in reader.fieldnames for header in CSV_HEADERS):
-                        print(f"CSV headers mismatch. Expected: {CSV_HEADERS}, Found: {reader.fieldnames}")
-                        with DATA_LOCK:
-                            return jsonify(list(data))
-                    
-                    # Count rows and collect matching data
-                    all_matching_rows = []
-                    for row in reader:
-                        row_count += 1
-                        try:
-                            # Only process if all required fields are present
-                            if all(field in row for field in CSV_HEADERS):
-                                # Parse the timestamp and check if it's within the requested duration
-                                timestamp = datetime.fromisoformat(row['timestamp'])
-                                if all_data_requested or timestamp > cutoff_time:
-                                    # Convert string values to proper types
-                                    processed_row = {
-                                        'timestamp': row['timestamp'],
-                                        'temperature': float(row['temperature']),
-                                        'do': float(row['do']),
-                                        'q': float(row['q']),
-                                        'vehicle_temperature': float(row['vehicle_temperature']) if row['vehicle_temperature'] else None,
-                                        'latitude': float(row['latitude']) if row['latitude'] else None,
-                                        'longitude': float(row['longitude']) if row['longitude'] else None
-                                    }
-                                    all_matching_rows.append(processed_row)
-                            else:
-                                error_count += 1
-                                if error_count < 5:  # Limit the number of error messages
-                                    missing = [field for field in CSV_HEADERS if field not in row]
-                                    print(f"Row {row_count} missing fields: {missing}")
-                        except (ValueError, KeyError) as e:
+        with open(log_file_path, 'r') as csvfile:
+            try:
+                reader = csv.DictReader(csvfile)
+                
+                # Verify the headers are correct
+                if not all(header in reader.fieldnames for header in CSV_HEADERS):
+                    print(f"CSV headers mismatch. Expected: {CSV_HEADERS}, Found: {reader.fieldnames}")
+                    return jsonify([])
+                
+                # Count rows and collect matching data
+                for row in reader:
+                    row_count += 1
+                    try:
+                        # Only process if all required fields are present
+                        if all(field in row for field in CSV_HEADERS):
+                            # Parse the timestamp
+                            timestamp = datetime.fromisoformat(row['timestamp'])
+                            
+                            # Check if it's within the requested duration
+                            if all_data_requested or timestamp > cutoff_time:
+                                # Convert string values to proper types
+                                processed_row = {
+                                    'timestamp': row['timestamp'],
+                                    'temperature': float(row['temperature']),
+                                    'do': float(row['do']),
+                                    'q': float(row['q']),
+                                    'vehicle_temperature': float(row['vehicle_temperature']) if row['vehicle_temperature'] else None,
+                                    'latitude': float(row['latitude']) if row['latitude'] else None,
+                                    'longitude': float(row['longitude']) if row['longitude'] else None
+                                }
+                                filtered_data.append(processed_row)
+                        else:
                             error_count += 1
                             if error_count < 5:  # Limit the number of error messages
-                                print(f"Error processing row {row_count}: {e}")
-                except Exception as file_error:
-                    print(f"Error reading CSV file: {file_error}")
-                    with DATA_LOCK:
-                        return jsonify(list(data))
+                                missing = [field for field in CSV_HEADERS if field not in row]
+                                print(f"Row {row_count} missing fields: {missing}")
+                    except (ValueError, KeyError) as e:
+                        error_count += 1
+                        if error_count < 5:  # Limit the number of error messages
+                            print(f"Error processing row {row_count}: {e}")
+            except Exception as file_error:
+                print(f"Error reading CSV file: {file_error}")
+                return jsonify([])
+        
+        # Sort data by timestamp to ensure correct order
+        filtered_data.sort(key=lambda x: x['timestamp'])
+        
+        # If we have more points than max_points, we need to downsample
+        total_points = len(filtered_data)
+        if total_points > max_points and max_points > 0:
+            # Simple downsampling - take evenly spaced points
+            step = total_points // max_points
+            filtered_data = filtered_data[::step]
+            if len(filtered_data) > max_points:  # Ensure we don't exceed max_points
+                filtered_data = filtered_data[:max_points]
+            print(f"Downsampled from {total_points} to {len(filtered_data)} points")
+        
+        print(f"CSV read: {row_count} total rows, {len(filtered_data)} matching records, {error_count} errors")
+        return jsonify(filtered_data)
             
-            # If we have more points than max_points, we need to downsample
-            total_points = len(all_matching_rows)
-            if total_points > max_points and max_points > 0:
-                # Simple downsampling - take evenly spaced points
-                step = total_points // max_points
-                filtered_data = all_matching_rows[::step]
-                if len(filtered_data) > max_points:  # Ensure we don't exceed max_points
-                    filtered_data = filtered_data[:max_points]
-                print(f"Downsampled from {total_points} to {len(filtered_data)} points")
-            else:
-                filtered_data = all_matching_rows
-            
-            print(f"CSV read: {row_count} total rows, {len(filtered_data)} returned, {error_count} errors")
-            
-            # If we got data from the CSV, return it
-            if filtered_data:
-                return jsonify(filtered_data)
-            else:
-                # Fall back to in-memory data if CSV read returned no data
-                print("No data found in CSV matching criteria, falling back to in-memory data")
-                with DATA_LOCK:
-                    return jsonify(list(data))
-                
-        except Exception as e:
-            print(f"Exception while processing CSV file: {e}")
-            # Fall back to in-memory data on any error
-            with DATA_LOCK:
-                return jsonify(list(data))
+    except Exception as e:
+        print(f"Exception while processing CSV file: {e}")
+        return jsonify([])
 
 @app.route('/api/serial')
 def get_serial():
