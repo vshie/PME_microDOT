@@ -525,14 +525,6 @@
                           backgroundColor: 'rgba(33, 150, 243, 0.1)',
                           borderColor: '#2196F3',
                           borderWidth: 1
-                        },
-                        pinch: {
-                          enabled: true
-                        },
-                        wheel: {
-                          enabled: true,
-                          modifierKey: 'ctrl',
-                          speed: 0.1
                         }
                       }
                     }
@@ -689,7 +681,7 @@
             this.snackbar = {
               show: true,
               color: 'info',
-              text: this.panEnabled ? 'Panning enabled - Click and drag to pan' : 'Panning disabled'
+              text: this.panEnabled ? 'Panning enabled - Click and drag to pan the graph' : 'Panning disabled'
             };
           }
         }
