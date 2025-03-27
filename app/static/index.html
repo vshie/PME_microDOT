@@ -535,24 +535,29 @@
               // Add zoom event handler
               this.chart.options.plugins.zoom.zoom.onZoomComplete = (chart) => {
                 try {
-                  // Get the x-axis scale (it's the first scale in the chart)
-                  const xAxis = chart.scales[Object.keys(chart.scales)[0]];
+                  // Get the x-axis scale directly
+                  const xAxis = chart.scales['x-axis-0'];
                   if (!xAxis) {
                     console.error("Could not find x-axis scale");
                     return;
                   }
 
+                  // Get the zoomed range
                   const {min, max} = xAxis;
-                  const startTime = new Date(min);
-                  const endTime = new Date(max);
                   
+                  // Filter measurements within the zoomed range
+                  const filteredMeasurements = this.measurements.filter(m => {
+                    const timestamp = new Date(m.timestamp).getTime();
+                    return timestamp >= min && timestamp <= max;
+                  });
+
                   // Update chart data with filtered measurements
-                  chart.data.labels = this.measurements.map(m => 
+                  chart.data.labels = filteredMeasurements.map(m => 
                     new Date(m.timestamp).toLocaleTimeString()
                   );
-                  chart.data.datasets[0].data = this.measurements.map(m => m.do);
-                  chart.data.datasets[1].data = this.measurements.map(m => m.temperature);
-                  chart.data.datasets[2].data = this.measurements.map(m => m.vehicle_temperature);
+                  chart.data.datasets[0].data = filteredMeasurements.map(m => m.do);
+                  chart.data.datasets[1].data = filteredMeasurements.map(m => m.temperature);
+                  chart.data.datasets[2].data = filteredMeasurements.map(m => m.vehicle_temperature);
                   
                   // Update the chart with the new data
                   chart.update('none');
