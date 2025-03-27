@@ -535,15 +535,15 @@
               // Add zoom event handler
               this.chart.options.plugins.zoom.zoom.onZoomComplete = (chart) => {
                 try {
-                  // Get the x-axis scale
-                  const xAxis = chart.scales['x-axis-0'];
-                  if (!xAxis) {
+                  // Get the first dataset's metadata to access scales
+                  const meta = chart.getDatasetMeta(0);
+                  if (!meta || !meta.xScale) {
                     console.error("Could not find x-axis scale");
                     return;
                   }
 
-                  // Get the zoomed range
-                  const {min, max} = xAxis;
+                  // Get the zoomed range from the xScale
+                  const {min, max} = meta.xScale;
                   
                   // Filter measurements within the zoomed range
                   const filteredMeasurements = this.measurements.filter(m => {
