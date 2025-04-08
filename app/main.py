@@ -11,13 +11,14 @@ import json
 from pathlib import Path
 import requests
 import glob
+from threading import Lock
 
 app = Flask(__name__)
 
 # Global list to store the latest 60 measurements.
 # Each measurement is a dict: {timestamp, temperature, do, q}
 data = []
-DATA_LOCK = threading.Lock()
+DATA_LOCK = Lock()
 SERIAL_LOCK = threading.Lock()
 
 # Serial port configuration
@@ -351,26 +352,31 @@ def get_vehicle_temperature():
 
 def get_gps_position():
     """Fetch GPS position from Mavlink2Rest GLOBAL_POSITION_INT message."""
-    endpoints = [
-        'http://host.docker.internal:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT',
-        'http://localhost:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT',
-        'http://127.0.0.1:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT',
-        'http://192.168.2.2:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT',
-        'http://blueos.local:6040/v1/mavlink/vehicles/1/components/1/messages/GLOBAL_POSITION_INT'
-    ]
-    
-    for endpoint in endpoints:
+    try:
+        # Try to get the system ID first
+        system_id = 1  # Default system ID
         try:
-            response = requests.get(endpoint, timeout=2.0)
+            response = requests.get('http://host.docker.internal:6040/v1/mavlink/vehicles', timeout=2.0)
             if response.status_code == 200:
-                data = response.json()
-                if 'message' in data and 'lat' in data['message'] and 'lon' in data['message']:
-                    # Convert lat/lon from int32 to degrees (divide by 1e7)
-                    lat = data['message']['lat'] / 1e7
-                    lon = data['message']['lon'] / 1e7
-                    return {'lat': lat, 'lon': lon}
+                vehicles = response.json()
+                if vehicles and len(vehicles) > 0:
+                    system_id = vehicles[0]  # Use the first vehicle ID
         except Exception:
-            continue
+            pass
+
+        # Try to get GPS position using the system ID
+        endpoint = f'http://host.docker.internal:6040/v1/mavlink/vehicles/{system_id}/components/1/messages/GLOBAL_POSITION_INT'
+        response = requests.get(endpoint, timeout=2.0)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'message' in data and 'lat' in data['message'] and 'lon' in data['message']:
+                # Convert lat/lon from int32 to degrees (divide by 1e7)
+                lat = data['message']['lat'] / 1e7
+                lon = data['message']['lon'] / 1e7
+                return {'lat': lat, 'lon': lon}
+    except Exception as e:
+        print(f"Error getting GPS position: {e}")
     
     return None
 
@@ -452,8 +458,7 @@ def read_sensor_loop():
                         do = float(parts[3])
                         q = float(parts[4])
                         
-                        # Get vehicle temperature and GPS position
-                        vehicle_temp = get_vehicle_temperature()
+                        # Get GPS position
                         gps_pos = get_gps_position()
                         
                         measurement = {
@@ -461,7 +466,7 @@ def read_sensor_loop():
                             "temperature": temperature,
                             "do": do,
                             "q": q,
-                            "vehicle_temperature": vehicle_temp,
+                            "vehicle_temperature": None,  # Will be implemented later
                             "latitude": gps_pos['lat'] if gps_pos else None,
                             "longitude": gps_pos['lon'] if gps_pos else None
                         }
