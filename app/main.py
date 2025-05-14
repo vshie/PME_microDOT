@@ -408,6 +408,7 @@ def read_sensor_loop():
             # Send the command
             try:
                 serial_connection.write("MDOT\r\n".encode('utf-8'))
+                print("wrote MDOT")
             except Exception as e:
                 print("Error writing to serial port:", e)
                 # Try to reinitialize the connection
